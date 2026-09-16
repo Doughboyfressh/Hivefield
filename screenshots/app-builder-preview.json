@@ -1,0 +1,39 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Hivefield",
+      "hasCanvas": true,
+      "bodyTextLen": 1771,
+      "bodyTextHash": "a3bfdc7358eabd34257988452ae61a9975272dad936aca5892d0c79ec060eafd",
+      "bodyTextPrefix": "Hivefield Live swarm · Qwen 3.6 27B on llama.cpp Qwen offline BE",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Hivefield",
+      "hasCanvas": true,
+      "bodyTextLen": 85,
+      "bodyTextHash": "cd4a0e93da9c13fdf781410fbd33420d2fbd179c2fed1e0030d2e47ab92648b1",
+      "bodyTextPrefix": "Hivefield Field Controls Qwen SPEED 0.0 COHERENCE 100% ENERGY 0 ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [
+    "BRAND WARNING: this looks like a game/canvas app but src/lib/og/site.json is missing \"type\": \"x:game\". X uses og:type=x:game to present the unfurl as a game card — set it in /workspace/src/lib/og/site.json per /workspace/.grok/skills/og/SKILL.md. Do not invent x:type or overload twitter:card as the game signal.",
+    "BRAND WARNING: this looks like a game/canvas app but /workspace/public/x-banner.jpg is missing. Games need a 50:11 X feed card (1200×264 JPEG) at public/x-banner.jpg — open /workspace/.grok/skills/og/SKILL.md and finish the brand-asset pass."
+  ],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
