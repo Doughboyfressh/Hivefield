@@ -1,9 +1,9 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { L as require_react, v as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
+import { R as require_react, v as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
 import { a as Radio, c as Hexagon, i as RotateCcw, l as Brain, n as Square, o as Play, r as Send, s as Pause, u as Activity } from "../_libs/lucide-react.mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-DmazBfdq.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-CC9TTqdc.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -390,8 +390,11 @@ var SwarmEngine = class {
 	lastEvolve = 0;
 	lastCluster = 0;
 	resize(w, h) {
-		this.w = Math.max(360, w);
-		this.h = Math.max(280, h);
+		const nw = Math.max(360, w);
+		const nh = Math.max(280, h);
+		if (nw === this.w && nh === this.h) return;
+		this.w = nw;
+		this.h = nh;
 		this.pheromone = createGrid(this.w, this.h, 12);
 	}
 	reset(cfg) {
@@ -1162,9 +1165,12 @@ function renderSwarm(ctx, engine, selectedId) {
 	for (const t of threats) drawThreat(ctx, t);
 	for (const r of resources) drawResource(ctx, r, engine.time);
 	if (config.showConnections) {
+		const byId = new Map(agents.map((a) => [a.id, a]));
 		ctx.lineWidth = .8;
+		let drawn = 0;
 		for (const a of agents) for (const id of a.connections) {
-			const o = agents.find((x) => x.id === id);
+			if (drawn > 220) break;
+			const o = byId.get(id);
 			if (!o || o.id <= a.id) continue;
 			const talking = a.state === "communicating" || o.state === "communicating";
 			ctx.beginPath();
@@ -1172,6 +1178,7 @@ function renderSwarm(ctx, engine, selectedId) {
 			ctx.lineTo(o.position.x, o.position.y);
 			ctx.strokeStyle = talking ? "rgba(197,206,216,0.28)" : "rgba(197,206,216,0.06)";
 			ctx.stroke();
+			drawn++;
 		}
 	}
 	if (config.showTrails) for (const a of agents) drawTrail(ctx, a);
@@ -1462,16 +1469,49 @@ function base(endpoint) {
 }
 async function probeLlama(endpoint) {
 	try {
-		return (await fetch(`${base(endpoint)}/v1/models`, {
+		if ((await fetch(`${base(endpoint)}/v1/models`, {
 			method: "GET",
 			signal: AbortSignal.timeout(4e3)
-		})).ok;
+		})).ok) return true;
+	} catch {}
+	try {
+		const { llamaProbe } = await import("./actions-BrhkgOKe.mjs");
+		return (await llamaProbe({ data: { endpoint } })).ok;
 	} catch {
 		return false;
 	}
 }
 async function llamaChat(cfg, messages, maxTokens = cfg.maxTokens) {
 	const started = Date.now();
+	const direct = await llamaDirect(cfg, messages, maxTokens, started);
+	if (direct.ok) return direct;
+	try {
+		const { llamaComplete } = await import("./actions-BrhkgOKe.mjs");
+		const r = await llamaComplete({ data: {
+			endpoint: cfg.endpoint,
+			model: cfg.model || "unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
+			messages,
+			temperature: cfg.temperature,
+			maxTokens
+		} });
+		return {
+			ok: r.ok,
+			content: r.content,
+			tokens: r.tokens,
+			latency: Date.now() - started,
+			error: r.ok ? void 0 : r.error
+		};
+	} catch (err) {
+		return {
+			ok: false,
+			content: "",
+			tokens: 0,
+			latency: Date.now() - started,
+			error: direct.error || (err instanceof Error ? err.message : "llama.cpp unreachable")
+		};
+	}
+}
+async function llamaDirect(cfg, messages, maxTokens, started) {
 	try {
 		const res = await fetch(`${base(cfg.endpoint)}/v1/chat/completions`, {
 			method: "POST",
@@ -1523,23 +1563,25 @@ function parseJsonObject(text) {
 		return null;
 	}
 }
-var SWARM_SYSTEM = `You are Qwen 3.6 27B, running locally via llama.cpp, acting as the central intelligence of Hivefield — a live agent swarm.
+var SWARM_SYSTEM = `You are Qwen 3.6 27B running on llama.cpp — the actual brain of Hivefield, a live multi-agent operations system. This is not a toy or a game. The canvas is only the bodies. You are the mind.
 
-You coordinate autonomous agents with:
-- Boids flocking (separation, alignment, cohesion)
-- Neural nets (6→8→4) and evolutionary selection
-- Pheromone stigmergy, hive memory, Q-learning
-- Task allocation, construction, threats, world clock
-- Roles: coordinator, explorer, worker, scout, carrier
+You command autonomous specialists:
+- coordinator — decompose work, assign, hold the thread
+- explorer — research, map options, find leverage
+- worker — produce the deliverable
+- scout — critique, find gaps and lies
+- carrier — package and hand off
 
-Be concise, technical, and operational. Prefer concrete parameter changes over theory.`;
+The field also runs real swarm algorithms you can retune: boids, 6→8→4 neural nets, evolution, pheromone stigmergy, Q-learning, hive memory, construction, threats, world clock.
+
+Be concise, technical, operational. Prefer concrete actions and artifacts over theory. Never claim you are a simulation.`;
 async function runDirectorCycle(cfg, input) {
 	const res = await llamaChat(cfg, [{
 		role: "system",
 		content: SWARM_SYSTEM
 	}, {
 		role: "user",
-		content: `You are the autonomous director. Optimize the live swarm.
+		content: `You are the autonomous director of a live agent swarm. Optimize operations.
 
 Goal: ${input.goal || "Keep the swarm healthy and productive."}
 
@@ -1552,7 +1594,6 @@ State:
 - links: ${input.metrics.connections}
 - generation: ${input.metrics.generation}
 - clusters: ${input.metrics.clusters}
-- weather: (see world)
 - pheromone: ${input.metrics.pheromone.toFixed(1)}
 
 Parameters:
@@ -1623,7 +1664,7 @@ async function runMissionRound(cfg, input) {
 		content: SWARM_SYSTEM
 	}, {
 		role: "user",
-		content: `Execute swarm mission round ${input.round}/3. The five specialists (Meridian/coordinator, Kepler/explorer, Anvil/worker, Vesper/scout, Helix/carrier) actually do the work.
+		content: `Execute swarm mission round ${input.round}/3. The five specialists (Meridian/coordinator, Kepler/explorer, Anvil/worker, Vesper/scout, Helix/carrier) actually do the work. This is live operations, not a rehearsal.
 
 Mission:
 ${input.mission}
@@ -1660,7 +1701,12 @@ var SAVE_KEY = "hivefield.states.v1";
 function HiveApp() {
 	const canvasRef = (0, import_react.useRef)(null);
 	const wrapRef = (0, import_react.useRef)(null);
-	const engineRef = (0, import_react.useRef)(new SwarmEngine());
+	const engineRef = (0, import_react.useRef)(null);
+	if (!engineRef.current) {
+		const created = new SwarmEngine();
+		created.reset();
+		engineRef.current = created;
+	}
 	const cfgRef = (0, import_react.useRef)({ ...DEFAULT_CONFIG });
 	const pausedRef = (0, import_react.useRef)(false);
 	const selectedRef = (0, import_react.useRef)(null);
@@ -1713,11 +1759,6 @@ function HiveApp() {
 	}, [directing]);
 	(0, import_react.useEffect)(() => {
 		setLlama(loadLlamaConfig());
-		engineRef.current.reset();
-		const t = window.setTimeout(() => {
-			probeLlama(loadLlamaConfig().endpoint).then(setQwenOn);
-		}, 200);
-		return () => clearTimeout(t);
 	}, []);
 	const patch = (0, import_react.useCallback)((p) => {
 		setConfig((c) => {
@@ -1746,16 +1787,20 @@ function HiveApp() {
 		const canvas = canvasRef.current;
 		if (!wrap || !canvas) return;
 		const eng = engineRef.current;
+		let lastW = 0;
+		let lastH = 0;
+		let ctx = null;
 		const ro = new ResizeObserver(() => {
 			const rect = wrap.getBoundingClientRect();
 			const dpr = Math.min(window.devicePixelRatio || 1, 2);
 			const w = Math.max(320, Math.floor(rect.width));
 			const h = Math.max(280, Math.floor(rect.height));
+			if (w === lastW && h === lastH) return;
+			lastW = w;
+			lastH = h;
 			canvas.width = Math.floor(w * dpr);
 			canvas.height = Math.floor(h * dpr);
-			canvas.style.width = `${w}px`;
-			canvas.style.height = `${h}px`;
-			const ctx = canvas.getContext("2d");
+			ctx = canvas.getContext("2d");
 			if (!ctx) return;
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 			eng.resize(w, h);
@@ -1766,24 +1811,32 @@ function HiveApp() {
 		let acc = 0;
 		const STEP = 1 / 60;
 		let snap = 0;
+		let lastEvt = "";
+		let alive = true;
 		const loop = (now) => {
-			const dt = Math.min((now - last) / 1e3, .1);
+			if (!alive) return;
+			const dt = Math.min((now - last) / 1e3, .05);
 			last = now;
 			if (!pausedRef.current) {
 				acc += dt;
-				while (acc >= STEP) {
+				let guard = 0;
+				while (acc >= STEP && guard++ < 3) {
 					eng.step(STEP);
 					acc -= STEP;
 				}
+				if (acc > STEP * 3) acc = 0;
 			}
-			const ctx = canvas.getContext("2d");
 			if (ctx) renderSwarm(ctx, eng, selectedRef.current);
 			snap += dt;
-			if (snap > .25) {
+			if (snap > .5) {
 				snap = 0;
 				const m = eng.metrics();
 				setMetrics(m);
-				setEvents([...eng.events]);
+				const head = eng.events[0]?.id ?? "";
+				if (head !== lastEvt) {
+					lastEvt = head;
+					setEvents([...eng.events]);
+				}
 				setHistory((h) => ({
 					speed: [...h.speed, m.avgSpeed].slice(-48),
 					coh: [...h.coh, m.coherence * 100].slice(-48),
@@ -1794,6 +1847,7 @@ function HiveApp() {
 		};
 		raf = requestAnimationFrame(loop);
 		return () => {
+			alive = false;
 			cancelAnimationFrame(raf);
 			ro.disconnect();
 		};
@@ -1878,6 +1932,12 @@ function HiveApp() {
 		setQwenOn(true);
 	};
 	const directorOnce = (0, import_react.useCallback)(async () => {
+		if (!await probeLlama(llama.endpoint)) {
+			setPlanThought("Qwen is offline. Start llama.cpp (Qwen 3.6 27B) and probe the endpoint.");
+			setQwenOn(false);
+			setDirecting(false);
+			return;
+		}
 		const res = await runDirectorCycle(llama, {
 			goal,
 			metrics: engineRef.current.metrics(),
@@ -1996,9 +2056,9 @@ function HiveApp() {
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "hidden text-xs text-muted sm:block",
 							children: [
-								"Live swarm · ",
+								"Operations · ",
 								QWEN_LABEL,
-								" on llama.cpp"
+								" is the brain"
 							]
 						})]
 					}),
@@ -2326,6 +2386,14 @@ function HiveApp() {
 										children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 											className: "space-y-2",
 											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+													className: "text-xs leading-relaxed text-muted",
+													children: [
+														"Qwen is the swarm's brain. The field is only the bodies. Point this at your llama.cpp OpenAI server — model stays locked to ",
+														"unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
+														"."
+													]
+												}),
 												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 													className: "text-xs text-muted",
 													children: "Endpoint"
@@ -2358,13 +2426,9 @@ function HiveApp() {
 														children: "Save"
 													})]
 												}),
-												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 													className: "text-xs text-subtle",
-													children: [
-														"OpenAI-compatible llama.cpp server. Model locked to ",
-														"unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
-														". Start it with CORS if this page is remote."
-													]
+													children: "Same contract as your project: POST /v1/chat/completions. Default here is :8088 so it does not collide with this console. Your llama.cpp can stay on :8080 — just set the endpoint."
 												})
 											]
 										})

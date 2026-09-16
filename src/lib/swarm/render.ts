@@ -86,10 +86,13 @@ export function renderSwarm(ctx: CanvasRenderingContext2D, engine: SwarmEngine, 
   for (const r of resources) drawResource(ctx, r, engine.time);
 
   if (config.showConnections) {
+    const byId = new Map(agents.map((a) => [a.id, a]));
     ctx.lineWidth = 0.8;
+    let drawn = 0;
     for (const a of agents) {
       for (const id of a.connections) {
-        const o = agents.find((x) => x.id === id);
+        if (drawn > 220) break;
+        const o = byId.get(id);
         if (!o || o.id <= a.id) continue;
         const talking = a.state === "communicating" || o.state === "communicating";
         ctx.beginPath();
@@ -97,6 +100,7 @@ export function renderSwarm(ctx: CanvasRenderingContext2D, engine: SwarmEngine, 
         ctx.lineTo(o.position.x, o.position.y);
         ctx.strokeStyle = talking ? "rgba(197,206,216,0.28)" : "rgba(197,206,216,0.06)";
         ctx.stroke();
+        drawn++;
       }
     }
   }

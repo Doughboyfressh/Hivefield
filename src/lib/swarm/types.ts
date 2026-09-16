@@ -157,7 +157,7 @@ export interface Metrics {
 export interface HiveEvent {
   id: string;
   at: number;
-  kind: "system" | "discovery" | "threat" | "evolution" | "build" | "ai" | "message";
+  kind: "system" | "discovery" | "threat" | "evolution" | "build" | "ai" | "message" | "browse";
   text: string;
   severity: "info" | "ok" | "warn" | "critical";
 }
@@ -193,9 +193,9 @@ export const ROLE_COLOR: Record<Role, string> = {
 
 export const ROLE_DUTY: Record<Role, string> = {
   coordinator: "Decomposes missions, assigns work, holds the thread.",
-  explorer: "Maps territory, researches options, finds leverage.",
+  explorer: "Kepler — live internet research. Search, map sources, find leverage.",
   worker: "Produces the deliverable — drafts, specs, plans.",
-  scout: "Stress-tests the work. Finds gaps, risks, and lies.",
+  scout: "Vesper — live page reads. Stress-tests claims against the wire.",
   carrier: "Packages, compresses, and hands the brief over.",
 };
 
@@ -257,7 +257,8 @@ export const DEFAULT_CONFIG: SwarmConfig = {
 };
 
 export const SAMPLE_MISSIONS = [
+  "Research live sources and brief: what changed in agent-swarm tooling this month? Cite URLs.",
   "Draft a 7-day launch plan for a neighborhood tool library, including roles, risks, and a one-page pitch.",
-  "Treat murmuration as an algorithm a robot fleet could steal. Spec the control loop, failure modes, and a first experiment.",
+  "Treat murmuration as an algorithm a robot fleet could steal. Spec the control loop, failure modes, and a first experiment — check the web for prior art.",
   "Write a hiring scorecard and first-week plan for a staff engineer joining a 6-person startup.",
 ];

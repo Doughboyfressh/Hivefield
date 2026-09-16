@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:8080/",
+  "url": "http://127.0.0.1:8081/",
   "viewports": {
     "desktop": {
       "width": 1280,
@@ -7,13 +7,13 @@
       "status": 200,
       "title": "Hivefield",
       "hasCanvas": true,
-      "bodyTextLen": 2306,
-      "bodyTextHash": "3c706c552acf17f48e6c95a97a5e4a412afb1064e5cf3e81085585e2ff3d2dfb",
-      "bodyTextPrefix": "Hivefield Operations · Qwen 3.6 27B air-gapped · swarm holds the",
+      "bodyTextLen": 1981,
+      "bodyTextHash": "1f00fe73e693365f7c09f3a454fa98cd0415e14a21fc0d3dd2b221627e6ecb17",
+      "bodyTextPrefix": "Hivefield Operations · Qwen 3.6 27B is the brain Qwen offline BE",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
-      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
     },
     "mobile": {
       "width": 390,
@@ -22,12 +22,12 @@
       "title": "Hivefield",
       "hasCanvas": true,
       "bodyTextLen": 86,
-      "bodyTextHash": "5c4f346ca66d9da403b1fea8f600af181c3a49511c95a43db985e2f32c92ea40",
-      "bodyTextPrefix": "Hivefield Field Controls Qwen SPEED 3.5 COHERENCE 69% ENERGY 83 ",
+      "bodyTextHash": "8c56610e2b17d03811a90837d292e0e3b272c7f31784940efea08b4282dec54b",
+      "bodyTextPrefix": "Hivefield Field Controls Qwen SPEED 3.6 COHERENCE 68% ENERGY 84 ",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
-      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
     }
   },
   "brandWarnings": [
@@ -35,5 +35,9 @@
     "BRAND WARNING: this looks like a game/canvas app but /workspace/public/x-banner.jpg is missing. Games need a 50:11 X feed card (1200×264 JPEG) at public/x-banner.jpg — open /workspace/.grok/skills/og/SKILL.md and finish the brand-asset pass."
   ],
   "authWarnings": [],
-  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": true,
+  "baselineReasons": [
+    "desktop: body text changed (0 -> 1981 chars, hash mismatch)"
+  ]
 }

@@ -1,6 +1,6 @@
 export const QWEN_MODEL = "unsloth/Qwen3.6-27B-GGUF:Q6_K_XL";
 export const QWEN_LABEL = "Qwen 3.6 27B";
-export const DEFAULT_LLAMA_ENDPOINT = "http://127.0.0.1:8080";
+export const DEFAULT_LLAMA_ENDPOINT = "http://127.0.0.1:8088";
 
 export type ChatRole = "system" | "user" | "assistant";
 export interface ChatMessage {
@@ -62,7 +62,14 @@ export async function probeLlama(endpoint: string): Promise<boolean> {
       method: "GET",
       signal: AbortSignal.timeout(4000),
     });
-    return res.ok;
+    if (res.ok) return true;
+  } catch {
+    /* mixed content / CORS — try the server hop */
+  }
+  try {
+    const { llamaProbe } = await import("./actions");
+    const r = await llamaProbe({ data: { endpoint } });
+    return r.ok;
   } catch {
     return false;
   }
@@ -74,13 +81,50 @@ export async function llamaChat(
   maxTokens = cfg.maxTokens,
 ): Promise<LlamaResult> {
   const started = Date.now();
+  const direct = await llamaDirect(cfg, messages, maxTokens, started);
+  if (direct.ok) return direct;
+  try {
+    const { llamaComplete } = await import("./actions");
+    const r = await llamaComplete({
+      data: {
+        endpoint: cfg.endpoint,
+        model: cfg.model || QWEN_MODEL,
+        messages,
+        temperature: cfg.temperature,
+        maxTokens,
+      },
+    });
+    return {
+      ok: r.ok,
+      content: r.content,
+      tokens: r.tokens,
+      latency: Date.now() - started,
+      error: r.ok ? undefined : r.error,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      content: "",
+      tokens: 0,
+      latency: Date.now() - started,
+      error: direct.error || (err instanceof Error ? err.message : "llama.cpp unreachable"),
+    };
+  }
+}
+
+async function llamaDirect(
+  cfg: LlamaConfig,
+  messages: ChatMessage[],
+  maxTokens: number,
+  started: number,
+): Promise<LlamaResult> {
   try {
     const res = await fetch(`${base(cfg.endpoint)}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: cfg.model || QWEN_MODEL,
-        messages,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
         temperature: cfg.temperature,
         max_tokens: maxTokens,
         stream: false,
@@ -98,7 +142,7 @@ export async function llamaChat(
       };
     }
     const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string | null } }[];
       usage?: { total_tokens?: number };
     };
     return {
@@ -131,13 +175,19 @@ export function parseJsonObject<T>(text: string): T | null {
   }
 }
 
-export const SWARM_SYSTEM = `You are Qwen 3.6 27B, running locally via llama.cpp, acting as the central intelligence of Hivefield — a live agent swarm.
+export const SWARM_SYSTEM = `You are Qwen 3.6 27B running on llama.cpp — the air-gapped brain of Hivefield. You have no internet. You cannot search, fetch URLs, or call network tools. Kepler (explorer) and Vesper (scout) are the swarm's net operators; they fetch first and drop evidence into hive memory. Reason only from that evidence plus the field state you are given.
 
-You coordinate autonomous agents with:
-- Boids flocking (separation, alignment, cohesion)
-- Neural nets (6→8→4) and evolutionary selection
-- Pheromone stigmergy, hive memory, Q-learning
-- Task allocation, construction, threats, world clock
-- Roles: coordinator, explorer, worker, scout, carrier
+This is not a toy or a game. The canvas is only the bodies. You are the mind.
 
-Be concise, technical, and operational. Prefer concrete parameter changes over theory.`;
+Specialists:
+- coordinator / Meridian — decompose work, assign, hold the thread
+- explorer / Kepler — live internet research (already done before you speak)
+- worker / Anvil — produce the deliverable
+- scout / Vesper — live page reads and critique (already done before you speak)
+- carrier / Helix — package and hand off
+
+If evidence is missing, say so. Cite URLs that appear in the swarm dossier. Never invent sources. Never claim you browsed the web.
+
+The field also runs real swarm algorithms you can retune: boids, 6→8→4 neural nets, evolution, pheromone stigmergy, Q-learning, hive memory, construction, threats, world clock.
+
+Be concise, technical, operational. Prefer concrete actions and artifacts over theory.`;

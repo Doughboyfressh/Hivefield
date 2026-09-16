@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "A live swarm of specialist agents. Deploy a mission and watch Coordinator, Explorer, Worker, Scout, and Carrier actually think, share hive memory, and ship work.",
+          "Live multi-agent operations. Qwen 3.6 27B on llama.cpp is the brain. Specialists think, share hive memory, and ship real work.",
       },
       { name: "theme-color", content: "#08090b" },
     ],

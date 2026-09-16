@@ -73,13 +73,12 @@ export class SwarmEngine {
   private lastEvolve = 0;
   private lastCluster = 0;
 
-  constructor() {
-    this.reset();
-  }
-
   resize(w: number, h: number) {
-    this.w = Math.max(360, w);
-    this.h = Math.max(280, h);
+    const nw = Math.max(360, w);
+    const nh = Math.max(280, h);
+    if (nw === this.w && nh === this.h) return;
+    this.w = nw;
+    this.h = nh;
     this.pheromone = createGrid(this.w, this.h, 12);
   }
 

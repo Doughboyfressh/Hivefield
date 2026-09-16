@@ -1,7 +1,10 @@
+"use client";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   Brain,
+  Globe,
   Hexagon,
   Pause,
   Play,
@@ -36,6 +39,7 @@ import {
   type LlamaConfig,
 } from "@/lib/llm/llama";
 import { chatSwarm, runDirectorCycle, runMissionRound } from "@/lib/llm/director";
+import type { BrowseTrace } from "@/lib/swarm/net";
 
 type RightTab = "qwen" | "analytics" | "hive" | "log";
 type PlaceMode = "resource" | "threat" | "build";
@@ -45,7 +49,12 @@ const SAVE_KEY = "hivefield.states.v1";
 export function HiveApp() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef(new SwarmEngine());
+  const engineRef = useRef<SwarmEngine>(null as unknown as SwarmEngine);
+  if (!engineRef.current) {
+    const created = new SwarmEngine();
+    created.reset();
+    engineRef.current = created;
+  }
   const cfgRef = useRef<SwarmConfig>({ ...DEFAULT_CONFIG });
   const pausedRef = useRef(false);
   const selectedRef = useRef<string | null>(null);
@@ -78,6 +87,7 @@ export function HiveApp() {
   const [missionBusy, setMissionBusy] = useState(false);
   const [round, setRound] = useState(0);
   const [artifacts, setArtifacts] = useState<{ id: string; title: string; body: string; by: string }[]>([]);
+  const [netLog, setNetLog] = useState<BrowseTrace[]>([]);
   const [mobilePane, setMobilePane] = useState<"field" | "controls" | "intel">("field");
   const chatHist = useRef<ChatMessage[]>([]);
   const directingRef = useRef(false);
@@ -98,12 +108,6 @@ export function HiveApp() {
 
   useEffect(() => {
     setLlama(loadLlamaConfig());
-    const eng = engineRef.current;
-    eng.reset();
-    const t = window.setTimeout(() => {
-      void probeLlama(loadLlamaConfig().endpoint).then(setQwenOn);
-    }, 200);
-    return () => clearTimeout(t);
   }, []);
 
   const patch = useCallback((p: Partial<SwarmConfig>) => {
@@ -128,16 +132,20 @@ export function HiveApp() {
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return;
     const eng = engineRef.current;
+    let lastW = 0;
+    let lastH = 0;
+    let ctx: CanvasRenderingContext2D | null = null;
     const ro = new ResizeObserver(() => {
       const rect = wrap.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.max(320, Math.floor(rect.width));
       const h = Math.max(280, Math.floor(rect.height));
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      const ctx = canvas.getContext("2d");
+      ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       eng.resize(w, h);
@@ -149,25 +157,33 @@ export function HiveApp() {
     let acc = 0;
     const STEP = 1 / 60;
     let snap = 0;
+    let lastEvt = "";
+    let alive = true;
 
     const loop = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.1);
+      if (!alive) return;
+      const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       if (!pausedRef.current) {
         acc += dt;
-        while (acc >= STEP) {
+        let guard = 0;
+        while (acc >= STEP && guard++ < 3) {
           eng.step(STEP);
           acc -= STEP;
         }
+        if (acc > STEP * 3) acc = 0;
       }
-      const ctx = canvas.getContext("2d");
       if (ctx) renderSwarm(ctx, eng, selectedRef.current);
       snap += dt;
-      if (snap > 0.25) {
+      if (snap > 0.5) {
         snap = 0;
         const m = eng.metrics();
         setMetrics(m);
-        setEvents([...eng.events]);
+        const head = eng.events[0]?.id ?? "";
+        if (head !== lastEvt) {
+          lastEvt = head;
+          setEvents([...eng.events]);
+        }
         setHistory((h) => ({
           speed: [...h.speed, m.avgSpeed].slice(-48),
           coh: [...h.coh, m.coherence * 100].slice(-48),
@@ -178,6 +194,7 @@ export function HiveApp() {
     };
     raf = requestAnimationFrame(loop);
     return () => {
+      alive = false;
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
@@ -232,8 +249,21 @@ export function HiveApp() {
     setChatInput("");
     setChat((c) => [...c, { role: "user", content: text }]);
     setChatBusy(true);
+    engineRef.current.agents.forEach((a) => {
+      if (a.role === "explorer" || a.role === "scout") a.state = "thinking";
+    });
     const res = await chatSwarm(llama, chatHist.current, text, engineRef.current.metrics(), cfgRef.current);
+    engineRef.current.agents.forEach((a) => {
+      if (a.state === "thinking" && (a.role === "explorer" || a.role === "scout")) a.state = "moving";
+    });
     setChatBusy(false);
+    if (res.traces?.length) {
+      setNetLog((n) => [...res.traces, ...n].slice(0, 24));
+      res.traces.forEach((t) =>
+        engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"),
+      );
+      setEvents([...engineRef.current.events]);
+    }
     if (!res.ok) {
       setChat((c) => [...c, { role: "assistant", content: `Offline. ${res.error}` }]);
       setQwenOn(false);
@@ -250,6 +280,13 @@ export function HiveApp() {
   };
 
   const directorOnce = useCallback(async () => {
+    const live = await probeLlama(llama.endpoint);
+    if (!live) {
+      setPlanThought("Qwen is offline. Start llama.cpp (Qwen 3.6 27B) and probe the endpoint.");
+      setQwenOn(false);
+      setDirecting(false);
+      return;
+    }
     const res = await runDirectorCycle(llama, {
       goal,
       metrics: engineRef.current.metrics(),
@@ -310,11 +347,23 @@ export function HiveApp() {
       });
       if (!res.ok) {
         engineRef.current.log("ai", res.error, "critical");
+        if (res.traces?.length) {
+          setNetLog((n) => [...res.traces, ...n].slice(0, 24));
+          res.traces.forEach((t) =>
+        engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"),
+      );
+        }
         setQwenOn(false);
         break;
       }
       setQwenOn(true);
       setTokens((t) => t + res.tokens);
+      if (res.traces.length) {
+        setNetLog((n) => [...res.traces, ...n].slice(0, 24));
+        res.traces.forEach((t) =>
+        engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"),
+      );
+      }
       prior += `\nR${r}: ${res.brief}`;
       res.notes.forEach((n) => engineRef.current.remember(n));
       setArtifacts((a) => [
@@ -357,7 +406,7 @@ export function HiveApp() {
         <Hexagon className="size-5 text-signal" strokeWidth={1.75} />
         <div className="min-w-0">
           <div className="text-sm font-medium tracking-tight">Hivefield</div>
-          <div className="hidden text-xs text-muted sm:block">Live swarm · {QWEN_LABEL} on llama.cpp</div>
+          <div className="hidden text-xs text-muted sm:block">Operations · {QWEN_LABEL} air-gapped · swarm holds the net</div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <StatusDot on={qwenOn} label={qwenOn ? QWEN_LABEL : "Qwen offline"} />
@@ -540,6 +589,9 @@ export function HiveApp() {
             <div className="space-y-4">
               <Section title={`${QWEN_LABEL} · llama.cpp`}>
                 <div className="space-y-2">
+                  <p className="text-xs leading-relaxed text-muted">
+                    Qwen is air-gapped — no search, no fetch. Kepler (explorer) and Vesper (scout) hold the only internet. They gather a dossier; Qwen reasons on that.
+                  </p>
                   <label className="text-xs text-muted">Endpoint</label>
                   <input
                     className="h-10 w-full rounded-md bg-raised px-3 font-mono text-xs text-fg outline-none ring-1 ring-border focus:ring-ring"
@@ -565,9 +617,29 @@ export function HiveApp() {
                     </Button>
                   </div>
                   <p className="text-xs text-subtle">
-                    OpenAI-compatible llama.cpp server. Model locked to {QWEN_MODEL}. Start it with CORS if this page is remote.
+                    Same contract as your project: POST /v1/chat/completions. Default here is :8088 so it does not collide with this console. Your llama.cpp can stay on :8080 — just set the endpoint.
                   </p>
                 </div>
+              </Section>
+
+              <Section title="Live net · Kepler & Vesper">
+                <p className="mb-2 text-xs leading-relaxed text-muted">
+                  Only the swarm's explorer and scout fetch. DuckDuckGo, Wikipedia, page reads. Qwen never touches the wire.
+                </p>
+                {netLog.length === 0 ? (
+                  <p className="text-xs text-subtle">No fetches yet — deploy a research mission or ask in chat.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {netLog.slice(0, 8).map((t, i) => (
+                      <li key={`${t.agent}-${t.tool}-${i}`} className="flex gap-2 font-mono text-xs">
+                        <Globe className={cn("mt-0.5 size-3.5 shrink-0", t.ok ? "text-signal" : "text-danger")} />
+                        <span className="min-w-0 break-all text-muted">
+                          {t.agent} · {t.tool} · {t.detail}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </Section>
 
               <Section title="Director">
@@ -648,7 +720,7 @@ export function HiveApp() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && void sendChat()}
-                    placeholder="Ask the swarm…"
+                    placeholder="Ask the swarm — Kepler and Vesper will fetch, Qwen will reason…"
                   />
                   <Button size="icon" aria-label="Send" onClick={() => void sendChat()} disabled={chatBusy}>
                     <Send />

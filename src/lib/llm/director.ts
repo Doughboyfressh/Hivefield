@@ -1,5 +1,8 @@
 import type { Metrics, SwarmConfig } from "@/lib/swarm/types";
 import { llamaChat, parseJsonObject, SWARM_SYSTEM, type ChatMessage, type LlamaConfig } from "./llama";
+import { needsNet, swarmScout, type BrowseTrace } from "@/lib/swarm/net";
+
+export type { BrowseTrace };
 
 export interface DirectorAction {
   type: "set_behavior" | "adjust_param" | "toggle_feature" | "spawn_resource";
@@ -17,6 +20,13 @@ export interface DirectorPlan {
   confidence: number;
 }
 
+function dossierBlock(brief: string): string {
+  if (!brief.trim()) {
+    return "\n\n[swarm net: Kepler/Vesper did not fetch. You have no live sources. Do not invent URLs.]";
+  }
+  return `\n\n[swarm net dossier — fetched by Kepler (explorer) and Vesper (scout). You have no internet. Reason only from this evidence.]\n${brief}`;
+}
+
 export async function runDirectorCycle(
   cfg: LlamaConfig,
   input: {
@@ -30,7 +40,7 @@ export async function runDirectorCycle(
     { role: "system", content: SWARM_SYSTEM },
     {
       role: "user",
-      content: `You are the autonomous director. Optimize the live swarm.
+      content: `You are the autonomous director of a live agent swarm. Optimize operations. You have no internet — do not request fetches.
 
 Goal: ${input.goal || "Keep the swarm healthy and productive."}
 
@@ -43,7 +53,6 @@ State:
 - links: ${input.metrics.connections}
 - generation: ${input.metrics.generation}
 - clusters: ${input.metrics.clusters}
-- weather: (see world)
 - pheromone: ${input.metrics.pheromone.toFixed(1)}
 
 Parameters:
@@ -92,18 +101,19 @@ export async function chatSwarm(
   user: string,
   metrics: Metrics,
   config: SwarmConfig,
-): Promise<{ ok: true; text: string; tokens: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; text: string; tokens: number; traces: BrowseTrace[] } | { ok: false; error: string; traces: BrowseTrace[] }> {
+  const dossier = await swarmScout(user, { follow: needsNet(user), force: needsNet(user) });
   const messages: ChatMessage[] = [
     { role: "system", content: SWARM_SYSTEM },
     ...history.slice(-12),
     {
       role: "user",
-      content: `[swarm energy ${metrics.avgEnergy.toFixed(0)} · coherence ${(metrics.coherence * 100).toFixed(0)}% · ${config.behavior} · gen ${metrics.generation} · ${metrics.resourcesFound} resources]\n\n${user}`,
+      content: `[swarm energy ${metrics.avgEnergy.toFixed(0)} · coherence ${(metrics.coherence * 100).toFixed(0)}% · ${config.behavior} · gen ${metrics.generation} · ${metrics.resourcesFound} resources]\n\n${user}${dossierBlock(dossier.brief)}`,
     },
   ];
-  const res = await llamaChat(cfg, messages, Math.min(cfg.maxTokens, 700));
-  if (!res.ok) return { ok: false, error: res.error || "Qwen silent" };
-  return { ok: true, text: res.content, tokens: res.tokens };
+  const res = await llamaChat(cfg, messages, Math.min(cfg.maxTokens, 800));
+  if (!res.ok) return { ok: false, error: res.error || "Qwen silent", traces: dossier.traces };
+  return { ok: true, text: res.content, tokens: res.tokens, traces: dossier.traces };
 }
 
 export async function runMissionRound(
@@ -121,14 +131,21 @@ export async function runMissionRound(
       notes: string[];
       artifacts: { title: string; body: string; by: string }[];
       tokens: number;
+      traces: BrowseTrace[];
     }
-  | { ok: false; error: string }
+  | { ok: false; error: string; traces: BrowseTrace[] }
 > {
+  const seed = [input.mission, input.prior, ...input.hive.slice(0, 8)].join("\n");
+  const dossier = await swarmScout(seed, {
+    force: true,
+    follow: input.round !== 2,
+  });
+
   const messages: ChatMessage[] = [
     { role: "system", content: SWARM_SYSTEM },
     {
       role: "user",
-      content: `Execute swarm mission round ${input.round}/3. The five specialists (Meridian/coordinator, Kepler/explorer, Anvil/worker, Vesper/scout, Helix/carrier) actually do the work.
+      content: `Execute swarm mission round ${input.round}/3. Kepler and Vesper already fetched. You (Qwen) have no internet — write from the dossier only.
 
 Mission:
 ${input.mission}
@@ -138,26 +155,40 @@ ${input.hive.slice(0, 12).join("\n") || "(empty)"}
 
 Prior:
 ${input.prior || "(none)"}
+${dossierBlock(dossier.brief)}
+
+Round 1: plan and assign using live sources. Round 2: produce. Round 3: critique claims against the dossier and package.
+Cite URLs that appear in the dossier. Never invent sources.
 
 Return JSON only:
-{"brief":"what the swarm did this round","notes":["hive note"],"artifacts":[{"title":"...","body":"markdown deliverable","by":"Anvil"}]}
+{"brief":"what the swarm did this round","notes":["hive note"],"artifacts":[{"title":"...","body":"markdown deliverable with citations","by":"Anvil"}]}
 
-Round 1: plan and assign. Round 2: produce. Round 3: critique and package. Keep each artifact under 400 words.`,
+Keep each artifact under 400 words.`,
     },
   ];
   const res = await llamaChat(cfg, messages, 900);
-  if (!res.ok) return { ok: false, error: res.error || "Qwen silent" };
+  if (!res.ok) return { ok: false, error: res.error || "Qwen silent", traces: dossier.traces };
   const parsed = parseJsonObject<{
     brief: string;
     notes?: string[];
     artifacts?: { title: string; body: string; by: string }[];
   }>(res.content);
-  if (!parsed) return { ok: false, error: "Qwen returned an unreadable round" };
+  if (!parsed) {
+    return {
+      ok: true,
+      brief: res.content.slice(0, 400),
+      notes: dossier.traces.map((t) => `${t.agent} ${t.tool}: ${t.detail}`),
+      artifacts: [{ title: `Round ${input.round} briefing`, body: res.content, by: "Kepler" }],
+      tokens: res.tokens,
+      traces: dossier.traces,
+    };
+  }
   return {
     ok: true,
     brief: parsed.brief || "",
     notes: parsed.notes ?? [],
     artifacts: parsed.artifacts ?? [],
     tokens: res.tokens,
+    traces: dossier.traces,
   };
 }
