@@ -1,6 +1,14 @@
 import type { Metrics, SwarmConfig } from "@/lib/swarm/types";
 import { llamaChat, parseJsonObject, SWARM_SYSTEM, type ChatMessage, type LlamaConfig } from "./llama";
-import { needsNet, swarmScout, type BrowseTrace } from "@/lib/swarm/net";
+import {
+  formatSwarmBrief,
+  mergeDossiers,
+  needsNet,
+  parseScoutOrders,
+  swarmScout,
+  type BrowseTrace,
+  type Dossier,
+} from "@/lib/swarm/net";
 
 export type { BrowseTrace };
 
@@ -25,6 +33,40 @@ function dossierBlock(brief: string): string {
     return "\n\n[swarm net: Kepler/Vesper did not fetch. You have no live sources. Do not invent URLs.]";
   }
   return `\n\n[swarm net dossier — fetched by Kepler (explorer) and Vesper (scout). You have no internet. Reason only from this evidence.]\n${brief}`;
+}
+
+async function reasonLocally(
+  cfg: LlamaConfig,
+  messages: ChatMessage[],
+  dossier: Dossier,
+  maxTokens: number,
+): Promise<{ ok: true; content: string; tokens: number; dossier: Dossier } | { ok: false; error: string; dossier: Dossier }> {
+  const res = await llamaChat(cfg, messages, maxTokens);
+  if (!res.ok) return { ok: false, error: res.error || "Qwen silent", dossier };
+
+  const orders = parseScoutOrders(res.content);
+  if (!orders.queries.length && !orders.urls.length) {
+    return { ok: true, content: res.content, tokens: res.tokens, dossier };
+  }
+
+  const extra = await swarmScout(orders.queries.join("\n"), {
+    force: true,
+    follow: true,
+    queries: orders.queries,
+    urls: orders.urls,
+  });
+  const merged = mergeDossiers(dossier, extra);
+  const follow: ChatMessage[] = [
+    ...messages,
+    { role: "assistant", content: res.content },
+    {
+      role: "user",
+      content: `The swarm executed your scout assignment. You still have no internet and no tools. Reason only from this new dossier.${dossierBlock(extra.brief)}`,
+    },
+  ];
+  const res2 = await llamaChat(cfg, follow, maxTokens);
+  if (!res2.ok) return { ok: true, content: res.content, tokens: res.tokens, dossier: merged };
+  return { ok: true, content: res2.content, tokens: res.tokens + res2.tokens, dossier: merged };
 }
 
 export async function runDirectorCycle(
@@ -102,7 +144,8 @@ export async function chatSwarm(
   metrics: Metrics,
   config: SwarmConfig,
 ): Promise<{ ok: true; text: string; tokens: number; traces: BrowseTrace[] } | { ok: false; error: string; traces: BrowseTrace[] }> {
-  const dossier = await swarmScout(user, { follow: needsNet(user), force: needsNet(user) });
+  const wantNet = needsNet(user);
+  let dossier = await swarmScout(user, { follow: wantNet, force: wantNet });
   const messages: ChatMessage[] = [
     { role: "system", content: SWARM_SYSTEM },
     ...history.slice(-12),
@@ -111,8 +154,14 @@ export async function chatSwarm(
       content: `[swarm energy ${metrics.avgEnergy.toFixed(0)} · coherence ${(metrics.coherence * 100).toFixed(0)}% · ${config.behavior} · gen ${metrics.generation} · ${metrics.resourcesFound} resources]\n\n${user}${dossierBlock(dossier.brief)}`,
     },
   ];
-  const res = await llamaChat(cfg, messages, Math.min(cfg.maxTokens, 800));
-  if (!res.ok) return { ok: false, error: res.error || "Qwen silent", traces: dossier.traces };
+  const res = await reasonLocally(cfg, messages, dossier, Math.min(cfg.maxTokens, 800));
+  dossier = res.dossier;
+  if (!res.ok) {
+    if (dossier.brief) {
+      return { ok: true, text: formatSwarmBrief(dossier), tokens: 0, traces: dossier.traces };
+    }
+    return { ok: false, error: res.error, traces: dossier.traces };
+  }
   return { ok: true, text: res.content, tokens: res.tokens, traces: dossier.traces };
 }
 
@@ -136,7 +185,7 @@ export async function runMissionRound(
   | { ok: false; error: string; traces: BrowseTrace[] }
 > {
   const seed = [input.mission, input.prior, ...input.hive.slice(0, 8)].join("\n");
-  const dossier = await swarmScout(seed, {
+  let dossier = await swarmScout(seed, {
     force: true,
     follow: input.round !== 2,
   });
@@ -159,6 +208,7 @@ ${dossierBlock(dossier.brief)}
 
 Round 1: plan and assign using live sources. Round 2: produce. Round 3: critique claims against the dossier and package.
 Cite URLs that appear in the dossier. Never invent sources.
+If you need another fetch, include {"scout":{"queries":["..."],"urls":[]}} — the swarm will fetch; you will not.
 
 Return JSON only:
 {"brief":"what the swarm did this round","notes":["hive note"],"artifacts":[{"title":"...","body":"markdown deliverable with citations","by":"Anvil"}]}
@@ -166,8 +216,21 @@ Return JSON only:
 Keep each artifact under 400 words.`,
     },
   ];
-  const res = await llamaChat(cfg, messages, 900);
-  if (!res.ok) return { ok: false, error: res.error || "Qwen silent", traces: dossier.traces };
+  const res = await reasonLocally(cfg, messages, dossier, 900);
+  dossier = res.dossier;
+  if (!res.ok) {
+    if (dossier.brief) {
+      return {
+        ok: true,
+        brief: "Kepler and Vesper fetched. Qwen is offline — delivering the swarm dossier.",
+        notes: dossier.traces.map((t) => `${t.agent} ${t.tool}: ${t.detail}`),
+        artifacts: [{ title: `Round ${input.round} swarm dossier`, body: dossier.brief, by: "Kepler" }],
+        tokens: 0,
+        traces: dossier.traces,
+      };
+    }
+    return { ok: false, error: res.error, traces: dossier.traces };
+  }
   const parsed = parseJsonObject<{
     brief: string;
     notes?: string[];

@@ -39,7 +39,7 @@ import {
   type LlamaConfig,
 } from "@/lib/llm/llama";
 import { chatSwarm, runDirectorCycle, runMissionRound } from "@/lib/llm/director";
-import type { BrowseTrace } from "@/lib/swarm/net";
+import { swarmScout, loadNetPath, saveNetPath, type BrowseTrace, type NetPath } from "@/lib/swarm/net";
 
 type RightTab = "qwen" | "analytics" | "hive" | "log";
 type PlaceMode = "resource" | "threat" | "build";
@@ -88,7 +88,9 @@ export function HiveApp() {
   const [round, setRound] = useState(0);
   const [artifacts, setArtifacts] = useState<{ id: string; title: string; body: string; by: string }[]>([]);
   const [netLog, setNetLog] = useState<BrowseTrace[]>([]);
-  const [mobilePane, setMobilePane] = useState<"field" | "controls" | "intel">("field");
+  const [netPath, setNetPath] = useState<NetPath>("device");
+  const [scoutQ, setScoutQ] = useState("");
+  const [scoutBusy, setScoutBusy] = useState(false);
   const chatHist = useRef<ChatMessage[]>([]);
   const directingRef = useRef(false);
 
@@ -108,6 +110,7 @@ export function HiveApp() {
 
   useEffect(() => {
     setLlama(loadLlamaConfig());
+    setNetPath(loadNetPath());
   }, []);
 
   const patch = useCallback((p: Partial<SwarmConfig>) => {
@@ -134,23 +137,27 @@ export function HiveApp() {
     const eng = engineRef.current;
     let lastW = 0;
     let lastH = 0;
+    let lastDpr = 0;
     let ctx: CanvasRenderingContext2D | null = null;
-    const ro = new ResizeObserver(() => {
+    const size = () => {
       const rect = wrap.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.max(320, Math.floor(rect.width));
       const h = Math.max(280, Math.floor(rect.height));
-      if (w === lastW && h === lastH) return;
+      if (w === lastW && h === lastH && dpr === lastDpr) return;
       lastW = w;
       lastH = h;
+      lastDpr = dpr;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       eng.resize(w, h);
-    });
+    };
+    const ro = new ResizeObserver(() => size());
     ro.observe(wrap);
+    size();
 
     let raf = 0;
     let last = performance.now();
@@ -213,7 +220,7 @@ export function HiveApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [reset]);
 
-  const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const onFieldClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     const eng = engineRef.current;
     if (!canvas) return;
@@ -241,6 +248,13 @@ export function HiveApp() {
     setEvents([...engineRef.current.events]);
   };
 
+  const recordNet = (traces: BrowseTrace[]) => {
+    if (!traces.length) return;
+    setNetLog((n) => [...traces, ...n].slice(0, 24));
+    traces.forEach((t) => engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"));
+    setEvents([...engineRef.current.events]);
+  };
+
   const selectedAgent = engineRef.current.agents.find((a) => a.id === selected) ?? null;
 
   const sendChat = async () => {
@@ -257,13 +271,7 @@ export function HiveApp() {
       if (a.state === "thinking" && (a.role === "explorer" || a.role === "scout")) a.state = "moving";
     });
     setChatBusy(false);
-    if (res.traces?.length) {
-      setNetLog((n) => [...res.traces, ...n].slice(0, 24));
-      res.traces.forEach((t) =>
-        engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"),
-      );
-      setEvents([...engineRef.current.events]);
-    }
+    if (res.traces?.length) recordNet(res.traces);
     if (!res.ok) {
       setChat((c) => [...c, { role: "assistant", content: `Offline. ${res.error}` }]);
       setQwenOn(false);
@@ -276,7 +284,7 @@ export function HiveApp() {
     ].slice(-16);
     setChat((c) => [...c, { role: "assistant", content: res.text }]);
     setTokens((t) => t + res.tokens);
-    setQwenOn(true);
+    setQwenOn(res.tokens > 0);
   };
 
   const directorOnce = useCallback(async () => {
@@ -347,23 +355,13 @@ export function HiveApp() {
       });
       if (!res.ok) {
         engineRef.current.log("ai", res.error, "critical");
-        if (res.traces?.length) {
-          setNetLog((n) => [...res.traces, ...n].slice(0, 24));
-          res.traces.forEach((t) =>
-        engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"),
-      );
-        }
+        if (res.traces?.length) recordNet(res.traces);
         setQwenOn(false);
         break;
       }
-      setQwenOn(true);
+      setQwenOn(res.tokens > 0);
       setTokens((t) => t + res.tokens);
-      if (res.traces.length) {
-        setNetLog((n) => [...res.traces, ...n].slice(0, 24));
-        res.traces.forEach((t) =>
-        engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"),
-      );
-      }
+      if (res.traces.length) recordNet(res.traces);
       prior += `\nR${r}: ${res.brief}`;
       res.notes.forEach((n) => engineRef.current.remember(n));
       setArtifacts((a) => [
@@ -381,6 +379,30 @@ export function HiveApp() {
       if (a.state === "thinking") a.state = "moving";
     });
     setMissionBusy(false);
+  };
+
+  const dispatchScout = async () => {
+    const q = scoutQ.trim();
+    if (!q || scoutBusy) return;
+    setScoutBusy(true);
+    engineRef.current.agents.forEach((a) => {
+      if (a.role === "explorer" || a.role === "scout") a.state = "thinking";
+    });
+    const dossier = await swarmScout(q, { force: true, follow: true });
+    engineRef.current.agents.forEach((a) => {
+      if (a.state === "thinking" && (a.role === "explorer" || a.role === "scout")) a.state = "moving";
+    });
+    recordNet(dossier.traces);
+    if (dossier.brief) {
+      engineRef.current.remember(`Scout dossier: ${q}`);
+      setArtifacts((a) => [
+        { id: `scout-${Date.now()}`, title: `Dossier · ${q.slice(0, 48)}`, body: dossier.brief, by: "Kepler" },
+        ...a,
+      ]);
+    }
+    engineRef.current.log("browse", dossier.brief ? "Kepler/Vesper returned a dossier." : "Kepler/Vesper found nothing.", dossier.brief ? "ok" : "warn");
+    setEvents([...engineRef.current.events]);
+    setScoutBusy(false);
   };
 
   const saveState = () => {
@@ -406,7 +428,7 @@ export function HiveApp() {
         <Hexagon className="size-5 text-signal" strokeWidth={1.75} />
         <div className="min-w-0">
           <div className="text-sm font-medium tracking-tight">Hivefield</div>
-          <div className="hidden text-xs text-muted sm:block">Operations · {QWEN_LABEL} air-gapped · swarm holds the net</div>
+          <div className="text-xs text-muted">Operations · {QWEN_LABEL} air-gapped · swarm holds the net</div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <StatusDot on={qwenOn} label={qwenOn ? QWEN_LABEL : "Qwen offline"} />
@@ -419,34 +441,8 @@ export function HiveApp() {
         </div>
       </header>
 
-      <nav className="flex shrink-0 gap-1 border-b border-border px-2 py-1 md:hidden">
-        {(
-          [
-            ["field", "Field"],
-            ["controls", "Controls"],
-            ["intel", "Qwen"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            className={cn(
-              "h-11 flex-1 rounded-md text-sm",
-              mobilePane === id ? "bg-raised text-fg" : "text-muted",
-            )}
-            onClick={() => setMobilePane(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="grid min-h-0 flex-1 md:grid-cols-[260px_minmax(0,1fr)_320px]">
-        <aside
-          className={cn(
-            "min-h-0 overflow-y-auto border-border p-3 md:block md:border-r",
-            mobilePane === "controls" ? "block" : "hidden",
-          )}
-        >
+      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_320px]">
+        <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
           <Section title="Behavior">
             <div className="grid grid-cols-1 gap-1">
               {BEHAVIORS.map((b) => (
@@ -531,12 +527,12 @@ export function HiveApp() {
           </Section>
         </aside>
 
-        <main className={cn("relative min-h-0 min-w-0", mobilePane === "field" ? "block" : "hidden md:block")}>
-          <div ref={wrapRef} className="absolute inset-0 touch-none">
+        <main className="relative min-h-0 min-w-0">
+          <div ref={wrapRef} className="absolute inset-0">
             <canvas
               ref={canvasRef}
               className="block size-full"
-              onClick={onCanvasClick}
+              onClick={onFieldClick}
               role="img"
               aria-label="Live swarm field"
             />
@@ -557,12 +553,7 @@ export function HiveApp() {
           </div>
         </main>
 
-        <aside
-          className={cn(
-            "min-h-0 overflow-y-auto border-border p-3 md:block md:border-l",
-            mobilePane === "intel" ? "block" : "hidden",
-          )}
-        >
+        <aside className="min-h-0 overflow-y-auto border-l border-border p-3">
           <div className="mb-3 flex gap-1 rounded-lg bg-surface p-1">
             {(
               [
@@ -592,7 +583,7 @@ export function HiveApp() {
                   <p className="text-xs leading-relaxed text-muted">
                     Qwen is air-gapped — no search, no fetch. Kepler (explorer) and Vesper (scout) hold the only internet. They gather a dossier; Qwen reasons on that.
                   </p>
-                  <label className="text-xs text-muted">Endpoint</label>
+                  <label className="text-xs text-muted">Brain endpoint</label>
                   <input
                     className="h-10 w-full rounded-md bg-raised px-3 font-mono text-xs text-fg outline-none ring-1 ring-border focus:ring-ring"
                     value={llama.endpoint}
@@ -617,17 +608,58 @@ export function HiveApp() {
                     </Button>
                   </div>
                   <p className="text-xs text-subtle">
-                    Same contract as your project: POST /v1/chat/completions. Default here is :8088 so it does not collide with this console. Your llama.cpp can stay on :8080 — just set the endpoint.
+                    Same contract as your project: POST /v1/chat/completions. Point this at your llama.cpp OpenAI server. Model stays locked to {QWEN_MODEL}. Scout still works if the brain is offline.
                   </p>
                 </div>
               </Section>
 
               <Section title="Live net · Kepler & Vesper">
                 <p className="mb-2 text-xs leading-relaxed text-muted">
-                  Only the swarm's explorer and scout fetch. DuckDuckGo, Wikipedia, page reads. Qwen never touches the wire.
+                  Only the swarm's explorer and scout fetch. Qwen is air-gapped. Dispatch Kepler/Vesper even when the brain is offline.
                 </p>
+                <div className="mb-2 flex gap-1 rounded-lg bg-surface p-1">
+                  {(
+                    [
+                      ["device", "This computer"],
+                      ["relay", "Relay"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      className={cn(
+                        "h-9 flex-1 rounded-md text-sm",
+                        netPath === id ? "bg-raised text-fg" : "text-muted",
+                      )}
+                      onClick={() => {
+                        setNetPath(id);
+                        saveNetPath(id);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mb-2 text-xs text-subtle">
+                  {netPath === "device"
+                    ? "Kepler/Vesper fetch from this computer. Falls back to relay if a site blocks the browser."
+                    : "Kepler/Vesper fetch through Hivefield's relay."}
+                </p>
+                <div className="mb-2 flex gap-2">
+                  <input
+                    className="h-10 min-w-0 flex-1 rounded-md bg-raised px-3 text-sm outline-none ring-1 ring-border focus:ring-ring"
+                    value={scoutQ}
+                    onChange={(e) => setScoutQ(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && void dispatchScout()}
+                    placeholder="Query or URL"
+                    disabled={scoutBusy}
+                  />
+                  <Button size="sm" onClick={() => void dispatchScout()} disabled={scoutBusy || !scoutQ.trim()}>
+                    <Globe />
+                    {scoutBusy ? "Fetching" : "Scout"}
+                  </Button>
+                </div>
                 {netLog.length === 0 ? (
-                  <p className="text-xs text-subtle">No fetches yet — deploy a research mission or ask in chat.</p>
+                  <p className="text-xs text-subtle">No fetches yet — scout, deploy a research mission, or ask in chat.</p>
                 ) : (
                   <ul className="space-y-1">
                     {netLog.slice(0, 8).map((t, i) => (
@@ -712,7 +744,7 @@ export function HiveApp() {
                       {m.content}
                     </div>
                   ))}
-                  {chatBusy && <div className="text-xs text-muted">Qwen is thinking…</div>}
+                  {chatBusy && <div className="text-xs text-muted">Kepler/Vesper fetching · Qwen reasons locally…</div>}
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -720,7 +752,7 @@ export function HiveApp() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && void sendChat()}
-                    placeholder="Ask the swarm — Kepler and Vesper will fetch, Qwen will reason…"
+                    placeholder="Ask the swarm — Kepler/Vesper fetch, Qwen stays local…"
                   />
                   <Button size="icon" aria-label="Send" onClick={() => void sendChat()} disabled={chatBusy}>
                     <Send />
@@ -823,9 +855,9 @@ export function HiveApp() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <section className="mb-5">
+    <section className={cn("mb-1", className)}>
       <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-subtle">{title}</h2>
       {children}
     </section>
