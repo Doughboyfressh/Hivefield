@@ -13,7 +13,7 @@ import {
 export type { BrowseTrace };
 
 export interface DirectorAction {
-  type: "set_behavior" | "adjust_param" | "toggle_feature" | "spawn_resource";
+  type: "set_behavior" | "adjust_param" | "toggle_feature" | "spawn_resource" | "assign_work";
   param?: string;
   value?: number;
   behavior?: string;
@@ -179,6 +179,7 @@ export async function runMissionRound(
       brief: string;
       notes: string[];
       artifacts: { title: string; body: string; by: string }[];
+      assignments: { role: string; task: string }[];
       tokens: number;
       traces: BrowseTrace[];
     }
@@ -211,9 +212,9 @@ Cite URLs that appear in the dossier. Never invent sources.
 If you need another fetch, include {"scout":{"queries":["..."],"urls":[]}} — the swarm will fetch; you will not.
 
 Return JSON only:
-{"brief":"what the swarm did this round","notes":["hive note"],"artifacts":[{"title":"...","body":"markdown deliverable with citations","by":"Anvil"}]}
+{"brief":"what the swarm did this round","notes":["hive note"],"assignments":[{"role":"explorer","task":"..."}],"artifacts":[{"title":"...","body":"markdown deliverable with citations","by":"Anvil"}]}
 
-Keep each artifact under 400 words.`,
+Roles: coordinator, explorer, worker, scout, carrier. Keep each artifact under 400 words.`,
     },
   ];
   const res = await reasonLocally(cfg, messages, dossier, 900);
@@ -225,6 +226,7 @@ Keep each artifact under 400 words.`,
         brief: "Kepler and Vesper fetched. Qwen is offline — delivering the swarm dossier.",
         notes: dossier.traces.map((t) => `${t.agent} ${t.tool}: ${t.detail}`),
         artifacts: [{ title: `Round ${input.round} swarm dossier`, body: dossier.brief, by: "Kepler" }],
+        assignments: [{ role: "explorer", task: "Compile live sources" }],
         tokens: 0,
         traces: dossier.traces,
       };
@@ -235,6 +237,7 @@ Keep each artifact under 400 words.`,
     brief: string;
     notes?: string[];
     artifacts?: { title: string; body: string; by: string }[];
+    assignments?: { role: string; task: string }[];
   }>(res.content);
   if (!parsed) {
     return {
@@ -242,6 +245,7 @@ Keep each artifact under 400 words.`,
       brief: res.content.slice(0, 400),
       notes: dossier.traces.map((t) => `${t.agent} ${t.tool}: ${t.detail}`),
       artifacts: [{ title: `Round ${input.round} briefing`, body: res.content, by: "Kepler" }],
+      assignments: [],
       tokens: res.tokens,
       traces: dossier.traces,
     };
@@ -251,6 +255,7 @@ Keep each artifact under 400 words.`,
     brief: parsed.brief || "",
     notes: parsed.notes ?? [],
     artifacts: parsed.artifacts ?? [],
+    assignments: parsed.assignments ?? [],
     tokens: res.tokens,
     traces: dossier.traces,
   };

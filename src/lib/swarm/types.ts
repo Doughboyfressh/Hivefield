@@ -66,6 +66,7 @@ export interface Agent {
   connections: string[];
   clusterId: number;
   generation: number;
+  taskId?: string;
 }
 
 export interface Resource {
@@ -152,6 +153,8 @@ export interface Metrics {
   hiveSize: number;
   eventRate: number;
   coverage: number;
+  workActive: number;
+  workDone: number;
 }
 
 export interface HiveEvent {
@@ -160,6 +163,25 @@ export interface HiveEvent {
   kind: "system" | "discovery" | "threat" | "evolution" | "build" | "ai" | "message" | "browse";
   text: string;
   severity: "info" | "ok" | "warn" | "critical";
+}
+
+export interface WorkItem {
+  id: string;
+  title: string;
+  role: Role;
+  agentId?: string;
+  agentName: string;
+  status: "queued" | "active" | "done" | "blocked";
+  progress: number;
+  at: number;
+}
+
+export interface SwarmMessage {
+  id: string;
+  from: string;
+  to: string;
+  text: string;
+  at: number;
 }
 
 export interface HiveNote {

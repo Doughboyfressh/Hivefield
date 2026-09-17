@@ -1,11 +1,35 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { R as require_react, v as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
-import { a as Radio, c as Hexagon, i as RotateCcw, l as Brain, n as Square, o as Play, r as Send, s as Pause, u as Activity } from "../_libs/lucide-react.mjs";
+import { y as require_jsx_runtime, z as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
+import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
+import { a as Radio, c as Hexagon, d as Brain, f as Activity, i as RotateCcw, l as Globe, n as Square, o as Play, r as Send, s as Pause, u as Download } from "../_libs/lucide-react.mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CC9TTqdc.js
+import { n as toast, t as Toaster } from "../_libs/sonner.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-usE4CB28.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
+var __defProp = Object.defineProperty;
+var __exportAll = (all, no_symbols) => {
+	let target = {};
+	for (var name in all) __defProp(target, name, {
+		get: all[name],
+		enumerable: true
+	});
+	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
+	return target;
+};
+var createSsrRpc = (functionId) => {
+	const url = "/_serverFn/" + functionId;
+	const serverFnMeta = { id: functionId };
+	const fn = async (...args) => {
+		return (await getServerFnById(functionId, { origin: "server" }))(...args);
+	};
+	return Object.assign(fn, {
+		url,
+		serverFnMeta,
+		[TSS_SERVER_FUNCTION]: true
+	});
+};
 function cn(...inputs) {
 	return twMerge(clsx(inputs));
 }
@@ -47,9 +71,9 @@ var ROLE_COLOR = {
 };
 var ROLE_DUTY = {
 	coordinator: "Decomposes missions, assigns work, holds the thread.",
-	explorer: "Maps territory, researches options, finds leverage.",
+	explorer: "Kepler — live internet research. Search, map sources, find leverage.",
 	worker: "Produces the deliverable — drafts, specs, plans.",
-	scout: "Stress-tests the work. Finds gaps, risks, and lies.",
+	scout: "Vesper — live page reads. Stress-tests claims against the wire.",
 	carrier: "Packages, compresses, and hands the brief over."
 };
 var ROLE_TITLE = {
@@ -142,8 +166,9 @@ var DEFAULT_CONFIG = {
 	obstacleMode: false
 };
 var SAMPLE_MISSIONS = [
+	"Research live sources and brief: what changed in agent-swarm tooling this month? Cite URLs.",
 	"Draft a 7-day launch plan for a neighborhood tool library, including roles, risks, and a one-page pitch.",
-	"Treat murmuration as an algorithm a robot fleet could steal. Spec the control loop, failure modes, and a first experiment.",
+	"Treat murmuration as an algorithm a robot fleet could steal. Spec the control loop, failure modes, and a first experiment — check the web for prior art.",
 	"Write a hiring scorecard and first-week plan for a staff engineer joining a 6-person startup."
 ];
 function vec(x = 0, y = 0) {
@@ -368,6 +393,8 @@ var SwarmEngine = class {
 	structures = [];
 	events = [];
 	hive = [];
+	work = [];
+	traffic = [];
 	clusters = [];
 	pheromone = createGrid(960, 640);
 	world = {
@@ -389,6 +416,7 @@ var SwarmEngine = class {
 	qExplore = .3;
 	lastEvolve = 0;
 	lastCluster = 0;
+	lastWork = 0;
 	resize(w, h) {
 		const nw = Math.max(360, w);
 		const nh = Math.max(280, h);
@@ -408,6 +436,8 @@ var SwarmEngine = class {
 		this.structures = [];
 		this.events = [];
 		this.hive = [];
+		this.work = [];
+		this.traffic = [];
 		this.clusters = [];
 		this.messages = 0;
 		this.tick = 0;
@@ -600,6 +630,9 @@ var SwarmEngine = class {
 			case "spawn_resource":
 				this.seedResources(3);
 				return "Seeded 3 resources";
+			case "assign_work":
+				if (action.behavior) return this.assignWork("worker", action.behavior);
+				return "No assignment";
 			default: return `Ignored ${action.type}`;
 		}
 	}
@@ -668,6 +701,10 @@ var SwarmEngine = class {
 		if (this.time - this.lastCluster > 2.5) {
 			this.recluster();
 			this.lastCluster = this.time;
+		}
+		if (this.time - this.lastWork > 1.6) {
+			this.progressWork();
+			this.lastWork = this.time;
 		}
 		if (cfg.lifecycleEnabled) this.lifecycle();
 		if (cfg.environmentEnabled && cfg.windStrength > 0) {
@@ -794,6 +831,7 @@ var SwarmEngine = class {
 			if (agent.trail.length > TRAIL) agent.trail.shift();
 		} else if (agent.trail.length) agent.trail.shift();
 		this.forage(agent, perc);
+		if (agent.taskId) agent.state = agent.state === "communicating" ? "communicating" : "working";
 		if (agent.connections.length && Math.random() < .01) {
 			agent.state = "communicating";
 			this.messages += 1;
@@ -1039,6 +1077,74 @@ var SwarmEngine = class {
 		}
 		this.clusters = clusters;
 	}
+	leads() {
+		const names = [
+			"Meridian",
+			"Kepler",
+			"Anvil",
+			"Vesper",
+			"Helix"
+		];
+		const out = [];
+		for (const n of names) {
+			const a = this.agents.find((x) => x.name === n || x.name.startsWith(`${n}-`));
+			if (a) out.push(a);
+		}
+		return out;
+	}
+	assignWork(role, title) {
+		const busy = new Set(this.work.filter((w) => w.status === "active").map((w) => w.agentId));
+		const agent = this.agents.find((a) => a.role === role && !busy.has(a.id)) ?? this.agents.find((a) => a.role === role);
+		const item = {
+			id: this.nid("job"),
+			title: title.slice(0, 160),
+			role,
+			agentId: agent?.id,
+			agentName: agent?.name ?? role,
+			status: "active",
+			progress: 0,
+			at: Date.now()
+		};
+		this.work.unshift(item);
+		if (this.work.length > 40) this.work.length = 40;
+		if (agent) {
+			agent.taskId = item.id;
+			agent.state = "working";
+		}
+		this.speak("Meridian", item.agentName, title);
+		this.log("ai", `${item.agentName} assigned: ${title}`, "ok");
+		return `${item.agentName} ← ${title}`;
+	}
+	speak(from, to, text) {
+		this.traffic.unshift({
+			id: this.nid("msg"),
+			from,
+			to,
+			text: text.slice(0, 220),
+			at: Date.now()
+		});
+		if (this.traffic.length > 32) this.traffic.length = 32;
+		this.messages += 1;
+		const a = this.agents.find((x) => x.name === from);
+		if (a) a.state = "communicating";
+	}
+	progressWork() {
+		for (const w of this.work) {
+			if (w.status !== "active") continue;
+			w.progress = Math.min(1, w.progress + .18);
+			if (w.progress >= 1) {
+				w.status = "done";
+				const a = this.agents.find((x) => x.id === w.agentId);
+				if (a && a.taskId === w.id) {
+					a.taskId = void 0;
+					a.state = "moving";
+					a.fitness += 8;
+				}
+				this.log("ai", `${w.agentName} closed: ${w.title}`, "ok");
+				this.remember(`${w.agentName}: ${w.title}`);
+			}
+		}
+	}
 	metrics() {
 		const n = this.agents.length || 1;
 		const avgSpeed = this.agents.reduce((s, a) => s + mag(a.velocity), 0) / n;
@@ -1070,7 +1176,9 @@ var SwarmEngine = class {
 			qExplore: this.qExplore,
 			hiveSize: this.hive.length,
 			eventRate,
-			coverage
+			coverage,
+			workActive: this.work.filter((w) => w.status === "active").length,
+			workDone: this.work.filter((w) => w.status === "done").length
 		};
 	}
 	snapshot(limitN = 12) {
@@ -1475,7 +1583,7 @@ async function probeLlama(endpoint) {
 		})).ok) return true;
 	} catch {}
 	try {
-		const { llamaProbe } = await import("./actions-BrhkgOKe.mjs");
+		const { llamaProbe } = await import("./actions-C-RpkgqT.mjs");
 		return (await llamaProbe({ data: { endpoint } })).ok;
 	} catch {
 		return false;
@@ -1486,7 +1594,7 @@ async function llamaChat(cfg, messages, maxTokens = cfg.maxTokens) {
 	const direct = await llamaDirect(cfg, messages, maxTokens, started);
 	if (direct.ok) return direct;
 	try {
-		const { llamaComplete } = await import("./actions-BrhkgOKe.mjs");
+		const { llamaComplete } = await import("./actions-C-RpkgqT.mjs");
 		const r = await llamaComplete({ data: {
 			endpoint: cfg.endpoint,
 			model: cfg.model || "unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
@@ -1518,7 +1626,10 @@ async function llamaDirect(cfg, messages, maxTokens, started) {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				model: cfg.model || "unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
-				messages,
+				messages: messages.map((m) => ({
+					role: m.role,
+					content: m.content
+				})),
 				temperature: cfg.temperature,
 				max_tokens: maxTokens,
 				stream: false
@@ -1563,25 +1674,368 @@ function parseJsonObject(text) {
 		return null;
 	}
 }
-var SWARM_SYSTEM = `You are Qwen 3.6 27B running on llama.cpp — the actual brain of Hivefield, a live multi-agent operations system. This is not a toy or a game. The canvas is only the bodies. You are the mind.
+var SWARM_SYSTEM = `You are Qwen 3.6 27B running on llama.cpp — the air-gapped brain of Hivefield. You have no internet. You have no tools. You cannot search, fetch URLs, or call network APIs. Tool calls are ignored.
 
-You command autonomous specialists:
-- coordinator — decompose work, assign, hold the thread
-- explorer — research, map options, find leverage
-- worker — produce the deliverable
-- scout — critique, find gaps and lies
-- carrier — package and hand off
+Kepler (explorer) and Vesper (scout) are the only net operators. They fetch first and drop evidence into the dossier you receive. Reason only from that evidence plus field state.
+
+If you need more evidence, include this JSON and stop — the swarm will fetch, then you will receive a new dossier. You still will not have internet:
+{"scout":{"queries":["search terms"],"urls":["https://example.com"]}}
+
+This is not a toy or a game. The canvas is only the bodies. You are the mind.
+
+Specialists:
+- coordinator / Meridian — decompose work, assign, hold the thread
+- explorer / Kepler — live internet research (already done before you speak)
+- worker / Anvil — produce the deliverable
+- scout / Vesper — live page reads and critique (already done before you speak)
+- carrier / Helix — package and hand off
+
+If evidence is missing, say so. Cite URLs that appear in the swarm dossier. Never invent sources. Never claim you browsed the web.
 
 The field also runs real swarm algorithms you can retune: boids, 6→8→4 neural nets, evolution, pheromone stigmergy, Q-learning, hive memory, construction, threats, world clock.
 
-Be concise, technical, operational. Prefer concrete actions and artifacts over theory. Never claim you are a simulation.`;
+Be concise, technical, operational. Prefer concrete actions and artifacts over theory.`;
+var webSearch = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("88b5c224eb24bac6b4ccb1bb1ab59a0e2503c83e20688a97aa9f2904e5d7cce7"));
+var browsePage = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("81475c5350ce133e5614f107f653acab669dc4dbf0be65e6d271c6aa82f9c27a"));
+var researchTopic = createServerFn({ method: "POST" }).validator((data) => data).handler(createSsrRpc("775d9fe397b7381b1ddddd09a34e9d370c3300ecb0cc6c942426e614c00b5eb0"));
+/** Fetch from this computer's network. No llama.cpp. No Qwen. */
+async function deviceSearch(query) {
+	const q = query.trim().slice(0, 200);
+	if (!q) return [];
+	const api = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=6&namespace=0&format=json&origin=*`;
+	const res = await fetch(api, { signal: AbortSignal.timeout(8e3) });
+	if (!res.ok) return [];
+	const data = await res.json();
+	const titles = data[1] ?? [];
+	const descs = data[2] ?? [];
+	const urls = data[3] ?? [];
+	return titles.map((title, i) => ({
+		title,
+		url: urls[i] ?? "",
+		snippet: descs[i] ?? "",
+		source: "wikipedia"
+	})).filter((h) => h.url.startsWith("http"));
+}
+async function deviceSummary(title) {
+	const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+	const res = await fetch(url, {
+		headers: { Accept: "application/json" },
+		signal: AbortSignal.timeout(8e3)
+	});
+	if (!res.ok) return null;
+	const j = await res.json();
+	const pageUrl = j.content_urls?.desktop?.page || url;
+	const text = [j.description && `Summary: ${j.description}`, j.extract].filter(Boolean).join("\n\n");
+	if (!text) return null;
+	return {
+		url: pageUrl,
+		title: j.title || title,
+		text: text.slice(0, 4e3),
+		links: [],
+		status: 200
+	};
+}
+async function deviceBrowse(url) {
+	const wiki = url.match(/wikipedia\.org\/wiki\/([^?#]+)/i);
+	if (wiki) return deviceSummary(decodeURIComponent(wiki[1].replace(/_/g, " ")));
+	try {
+		const res = await fetch(url, { signal: AbortSignal.timeout(1e4) });
+		if (!res.ok) return null;
+		const html = await res.text();
+		const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]+>/g, "").trim() || url;
+		const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4e3);
+		if (text.length < 40) return null;
+		return {
+			url,
+			title: title.slice(0, 180),
+			text,
+			links: [],
+			status: res.status
+		};
+	} catch {
+		return null;
+	}
+}
+async function deviceResearch(query) {
+	const hits = await deviceSearch(query);
+	const pages = [];
+	for (const hit of hits.slice(0, 3)) {
+		const page = await deviceBrowse(hit.url);
+		if (page) pages.push(page);
+	}
+	return {
+		brief: [
+			`Research (this device): ${query}`,
+			`Sources: ${hits.length} hits, ${pages.length} pages.`,
+			...pages.map((p) => `## ${p.title}\n${p.url}\n${p.text.slice(0, 900)}`)
+		].join("\n\n").slice(0, 1e4),
+		hits,
+		pages
+	};
+}
+var NET_KEY = "hivefield.netpath.v1";
+function loadNetPath() {
+	try {
+		const v = localStorage.getItem(NET_KEY);
+		if (v === "relay" || v === "device") return v;
+	} catch {}
+	return "device";
+}
+function saveNetPath(path) {
+	localStorage.setItem(NET_KEY, path);
+}
+var STOP = new Set("a an the and or but if then than to of for in on at by with from as is are was were be been being this that those these it its you your we they them their what which who whom how why when where not no nor can could should would will just about into over after before also more most other some such only own same so than too very that".split(" "));
+var NET_HINT = /\b(search|research|look up|lookup|latest|news|current|today|cite|source|sources|url|https?:\/\/|wikipedia|github|docs?|according|find out|who is|what is|when did|browse|web)\b/i;
+function extractUrls(text) {
+	const found = text.match(/https?:\/\/[^\s)\]>'"]+/gi) ?? [];
+	return [...new Set(found.map((u) => u.replace(/[.,;]+$/, "")))].slice(0, 4);
+}
+function extractQueries(text) {
+	const queries = [];
+	for (const m of text.matchAll(/"([^"]{4,80})"/g)) queries.push(m[1]);
+	const cleaned = text.replace(/https?:\/\/\S+/gi, " ").replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+	if (cleaned.length >= 8) queries.push(cleaned.slice(0, 140));
+	const terms = cleaned.split(" ").filter((w) => w.length >= 4 && !STOP.has(w.toLowerCase())).slice(0, 8);
+	if (terms.length >= 2) queries.push(terms.join(" "));
+	const uniq = [];
+	for (const q of queries) {
+		const k = q.toLowerCase();
+		if (!uniq.some((u) => u.toLowerCase() === k)) uniq.push(q);
+	}
+	return uniq.slice(0, 3);
+}
+function needsNet(text) {
+	if (extractUrls(text).length) return true;
+	if (NET_HINT.test(text)) return true;
+	if (text.trim().length > 80 && /[?]|brief|mission|plan|spec/i.test(text)) return true;
+	return false;
+}
+function parseScoutOrders(text) {
+	const queries = [];
+	const urls = extractUrls(text);
+	const raw = text.match(/\{[\s\S]*"scout"[\s\S]*\}/)?.[0];
+	if (raw) {
+		const start = raw.indexOf("{");
+		const end = raw.lastIndexOf("}");
+		if (end > start) try {
+			const s = JSON.parse(raw.slice(start, end + 1)).scout;
+			if (s) {
+				if (typeof s.query === "string") queries.push(s.query);
+				if (Array.isArray(s.queries)) {
+					for (const q of s.queries) if (typeof q === "string") queries.push(q);
+				}
+				if (Array.isArray(s.urls)) {
+					for (const u of s.urls) if (typeof u === "string") urls.push(u);
+				}
+			}
+		} catch {}
+	}
+	return {
+		queries: [...new Set(queries.map((q) => q.trim()).filter((q) => q.length >= 3))].slice(0, 3),
+		urls: [...new Set(urls)].slice(0, 4)
+	};
+}
+function formatSwarmBrief(d) {
+	if (!d.brief.trim()) return "Kepler/Vesper: no live sources. Qwen is air-gapped and has nothing to cite.";
+	return `Kepler/Vesper dossier (swarm net — Qwen did not fetch):\n\n${d.brief}`;
+}
+function mergeDossiers(a, b) {
+	return {
+		queries: [.../* @__PURE__ */ new Set([...a.queries, ...b.queries])].slice(0, 6),
+		urls: [.../* @__PURE__ */ new Set([...a.urls, ...b.urls])].slice(0, 8),
+		brief: [a.brief, b.brief].filter(Boolean).join("\n\n").slice(0, 12e3),
+		traces: [...a.traces, ...b.traces]
+	};
+}
+function viaDevice() {
+	return typeof window !== "undefined" && loadNetPath() === "device";
+}
+async function scoutOnDevice(queries, urls, follow) {
+	const traces = [];
+	const parts = [];
+	for (const url of urls) try {
+		const page = await deviceBrowse(url);
+		traces.push({
+			agent: "Vesper",
+			tool: "browse_page",
+			detail: `${url} · device`,
+			ok: Boolean(page)
+		});
+		if (page) parts.push(`## ${page.title}\n${page.url}\n${page.text.slice(0, 1800)}`);
+	} catch {
+		traces.push({
+			agent: "Vesper",
+			tool: "browse_page",
+			detail: `${url} · device`,
+			ok: false
+		});
+	}
+	const q = queries[0];
+	if (q) try {
+		const deep = await deviceResearch(q);
+		traces.push({
+			agent: "Kepler",
+			tool: "research_topic",
+			detail: `${q} · device`,
+			ok: deep.pages.length > 0 || deep.hits.length > 0
+		});
+		if (deep.brief) parts.push(deep.brief);
+		if (follow) for (const hit of deep.hits.slice(0, 2)) {
+			if (urls.includes(hit.url)) continue;
+			const page = await deviceBrowse(hit.url);
+			traces.push({
+				agent: "Vesper",
+				tool: "follow_link",
+				detail: `${hit.url} · device`,
+				ok: Boolean(page)
+			});
+			if (page) parts.push(`## ${page.title}\n${page.url}\n${page.text.slice(0, 900)}`);
+		}
+	} catch {
+		traces.push({
+			agent: "Kepler",
+			tool: "research_topic",
+			detail: `${q} · device`,
+			ok: false
+		});
+	}
+	return {
+		queries,
+		urls,
+		brief: parts.join("\n\n").slice(0, 1e4),
+		traces
+	};
+}
+async function scoutOnRelay(queries, urls, follow, fallbackText) {
+	const traces = [];
+	const parts = [];
+	for (const url of urls) {
+		const r = await browsePage({ data: { url } });
+		const ok = Boolean(r.ok && r.page);
+		traces.push({
+			agent: "Vesper",
+			tool: "browse_page",
+			detail: `${url} · relay`,
+			ok
+		});
+		if (ok && r.page) parts.push(`## ${r.page.title}\n${r.page.url}\n${r.page.text.slice(0, 1800)}`);
+	}
+	const q = queries[0] || (urls.length ? "" : fallbackText.slice(0, 120));
+	if (q) {
+		traces.push({
+			agent: "Kepler",
+			tool: "research_topic",
+			detail: `${q} · relay`,
+			ok: false
+		});
+		const deep = await researchTopic({ data: { query: q } });
+		traces[traces.length - 1].ok = Boolean(deep.ok);
+		if (deep.ok) {
+			parts.push(deep.brief);
+			if (follow) {
+				const extra = deep.pages.flatMap((p) => p.links).slice(0, 2);
+				for (const link of extra) {
+					const r = await browsePage({ data: { url: link.url } });
+					const ok = Boolean(r.ok && r.page);
+					traces.push({
+						agent: "Vesper",
+						tool: "follow_link",
+						detail: `${link.url} · relay`,
+						ok
+					});
+					if (ok && r.page) parts.push(`## ${r.page.title}\n${r.page.url}\n${r.page.text.slice(0, 900)}`);
+				}
+			}
+		} else if (queries[1]) {
+			const alt = await webSearch({ data: { query: queries[1] } });
+			traces.push({
+				agent: "Kepler",
+				tool: "web_search",
+				detail: `${queries[1]} · relay`,
+				ok: alt.ok && alt.hits.length > 0
+			});
+			if (alt.hits.length) parts.push(alt.hits.map((h, i) => `${i + 1}. ${h.title}\n${h.url}\n${h.snippet}`).join("\n\n"));
+		}
+	}
+	return {
+		queries,
+		urls,
+		brief: parts.join("\n\n").slice(0, 1e4),
+		traces
+	};
+}
+async function swarmScout(text, opts = {}) {
+	const urls = [.../* @__PURE__ */ new Set([...opts.urls ?? [], ...extractUrls(text)])].slice(0, 4);
+	const queries = [.../* @__PURE__ */ new Set([...opts.queries ?? [], ...extractQueries(text)])].slice(0, 3);
+	if (!opts.force && !needsNet(text) && !urls.length && !(opts.queries?.length || opts.urls?.length)) return {
+		queries,
+		urls,
+		brief: "",
+		traces: []
+	};
+	if (viaDevice()) {
+		const local = await scoutOnDevice(queries, urls, Boolean(opts.follow));
+		if (local.brief.trim()) return local;
+		return mergeDossiers(local, await scoutOnRelay(queries, urls, Boolean(opts.follow), text));
+	}
+	return scoutOnRelay(queries, urls, Boolean(opts.follow), text);
+}
+function dossierBlock(brief) {
+	if (!brief.trim()) return "\n\n[swarm net: Kepler/Vesper did not fetch. You have no live sources. Do not invent URLs.]";
+	return `\n\n[swarm net dossier — fetched by Kepler (explorer) and Vesper (scout). You have no internet. Reason only from this evidence.]\n${brief}`;
+}
+async function reasonLocally(cfg, messages, dossier, maxTokens) {
+	const res = await llamaChat(cfg, messages, maxTokens);
+	if (!res.ok) return {
+		ok: false,
+		error: res.error || "Qwen silent",
+		dossier
+	};
+	const orders = parseScoutOrders(res.content);
+	if (!orders.queries.length && !orders.urls.length) return {
+		ok: true,
+		content: res.content,
+		tokens: res.tokens,
+		dossier
+	};
+	const extra = await swarmScout(orders.queries.join("\n"), {
+		force: true,
+		follow: true,
+		queries: orders.queries,
+		urls: orders.urls
+	});
+	const merged = mergeDossiers(dossier, extra);
+	const res2 = await llamaChat(cfg, [
+		...messages,
+		{
+			role: "assistant",
+			content: res.content
+		},
+		{
+			role: "user",
+			content: `The swarm executed your scout assignment. You still have no internet and no tools. Reason only from this new dossier.${dossierBlock(extra.brief)}`
+		}
+	], maxTokens);
+	if (!res2.ok) return {
+		ok: true,
+		content: res.content,
+		tokens: res.tokens,
+		dossier: merged
+	};
+	return {
+		ok: true,
+		content: res2.content,
+		tokens: res.tokens + res2.tokens,
+		dossier: merged
+	};
+}
 async function runDirectorCycle(cfg, input) {
 	const res = await llamaChat(cfg, [{
 		role: "system",
 		content: SWARM_SYSTEM
 	}, {
 		role: "user",
-		content: `You are the autonomous director of a live agent swarm. Optimize operations.
+		content: `You are the autonomous director of a live agent swarm. Optimize operations. You have no internet — do not request fetches.
 
 Goal: ${input.goal || "Keep the swarm healthy and productive."}
 
@@ -1637,7 +2091,12 @@ Features: pheromoneEnabled, neuralNetEnabled, evolutionEnabled, memoryEnabled, e
 	};
 }
 async function chatSwarm(cfg, history, user, metrics, config) {
-	const res = await llamaChat(cfg, [
+	const wantNet = needsNet(user);
+	let dossier = await swarmScout(user, {
+		follow: wantNet,
+		force: wantNet
+	});
+	const res = await reasonLocally(cfg, [
 		{
 			role: "system",
 			content: SWARM_SYSTEM
@@ -1645,26 +2104,45 @@ async function chatSwarm(cfg, history, user, metrics, config) {
 		...history.slice(-12),
 		{
 			role: "user",
-			content: `[swarm energy ${metrics.avgEnergy.toFixed(0)} · coherence ${(metrics.coherence * 100).toFixed(0)}% · ${config.behavior} · gen ${metrics.generation} · ${metrics.resourcesFound} resources]\n\n${user}`
+			content: `[swarm energy ${metrics.avgEnergy.toFixed(0)} · coherence ${(metrics.coherence * 100).toFixed(0)}% · ${config.behavior} · gen ${metrics.generation} · ${metrics.resourcesFound} resources]\n\n${user}${dossierBlock(dossier.brief)}`
 		}
-	], Math.min(cfg.maxTokens, 700));
-	if (!res.ok) return {
-		ok: false,
-		error: res.error || "Qwen silent"
-	};
+	], dossier, Math.min(cfg.maxTokens, 800));
+	dossier = res.dossier;
+	if (!res.ok) {
+		if (dossier.brief) return {
+			ok: true,
+			text: formatSwarmBrief(dossier),
+			tokens: 0,
+			traces: dossier.traces
+		};
+		return {
+			ok: false,
+			error: res.error,
+			traces: dossier.traces
+		};
+	}
 	return {
 		ok: true,
 		text: res.content,
-		tokens: res.tokens
+		tokens: res.tokens,
+		traces: dossier.traces
 	};
 }
 async function runMissionRound(cfg, input) {
-	const res = await llamaChat(cfg, [{
+	let dossier = await swarmScout([
+		input.mission,
+		input.prior,
+		...input.hive.slice(0, 8)
+	].join("\n"), {
+		force: true,
+		follow: input.round !== 2
+	});
+	const res = await reasonLocally(cfg, [{
 		role: "system",
 		content: SWARM_SYSTEM
 	}, {
 		role: "user",
-		content: `Execute swarm mission round ${input.round}/3. The five specialists (Meridian/coordinator, Kepler/explorer, Anvil/worker, Vesper/scout, Helix/carrier) actually do the work. This is live operations, not a rehearsal.
+		content: `Execute swarm mission round ${input.round}/3. Kepler and Vesper already fetched. You (Qwen) have no internet — write from the dossier only.
 
 Mission:
 ${input.mission}
@@ -1674,27 +2152,63 @@ ${input.hive.slice(0, 12).join("\n") || "(empty)"}
 
 Prior:
 ${input.prior || "(none)"}
+${dossierBlock(dossier.brief)}
+
+Round 1: plan and assign using live sources. Round 2: produce. Round 3: critique claims against the dossier and package.
+Cite URLs that appear in the dossier. Never invent sources.
+If you need another fetch, include {"scout":{"queries":["..."],"urls":[]}} — the swarm will fetch; you will not.
 
 Return JSON only:
-{"brief":"what the swarm did this round","notes":["hive note"],"artifacts":[{"title":"...","body":"markdown deliverable","by":"Anvil"}]}
+{"brief":"what the swarm did this round","notes":["hive note"],"assignments":[{"role":"explorer","task":"..."}],"artifacts":[{"title":"...","body":"markdown deliverable with citations","by":"Anvil"}]}
 
-Round 1: plan and assign. Round 2: produce. Round 3: critique and package. Keep each artifact under 400 words.`
-	}], 900);
-	if (!res.ok) return {
-		ok: false,
-		error: res.error || "Qwen silent"
-	};
+Roles: coordinator, explorer, worker, scout, carrier. Keep each artifact under 400 words.`
+	}], dossier, 900);
+	dossier = res.dossier;
+	if (!res.ok) {
+		if (dossier.brief) return {
+			ok: true,
+			brief: "Kepler and Vesper fetched. Qwen is offline — delivering the swarm dossier.",
+			notes: dossier.traces.map((t) => `${t.agent} ${t.tool}: ${t.detail}`),
+			artifacts: [{
+				title: `Round ${input.round} swarm dossier`,
+				body: dossier.brief,
+				by: "Kepler"
+			}],
+			assignments: [{
+				role: "explorer",
+				task: "Compile live sources"
+			}],
+			tokens: 0,
+			traces: dossier.traces
+		};
+		return {
+			ok: false,
+			error: res.error,
+			traces: dossier.traces
+		};
+	}
 	const parsed = parseJsonObject(res.content);
 	if (!parsed) return {
-		ok: false,
-		error: "Qwen returned an unreadable round"
+		ok: true,
+		brief: res.content.slice(0, 400),
+		notes: dossier.traces.map((t) => `${t.agent} ${t.tool}: ${t.detail}`),
+		artifacts: [{
+			title: `Round ${input.round} briefing`,
+			body: res.content,
+			by: "Kepler"
+		}],
+		assignments: [],
+		tokens: res.tokens,
+		traces: dossier.traces
 	};
 	return {
 		ok: true,
 		brief: parsed.brief || "",
 		notes: parsed.notes ?? [],
 		artifacts: parsed.artifacts ?? [],
-		tokens: res.tokens
+		assignments: parsed.assignments ?? [],
+		tokens: res.tokens,
+		traces: dossier.traces
 	};
 }
 var SAVE_KEY = "hivefield.states.v1";
@@ -1741,7 +2255,12 @@ function HiveApp() {
 	const [missionBusy, setMissionBusy] = (0, import_react.useState)(false);
 	const [round, setRound] = (0, import_react.useState)(0);
 	const [artifacts, setArtifacts] = (0, import_react.useState)([]);
-	const [mobilePane, setMobilePane] = (0, import_react.useState)("field");
+	const [netLog, setNetLog] = (0, import_react.useState)([]);
+	const [work, setWork] = (0, import_react.useState)([]);
+	const [leads, setLeads] = (0, import_react.useState)([]);
+	const [netPath, setNetPath] = (0, import_react.useState)("device");
+	const [scoutQ, setScoutQ] = (0, import_react.useState)("");
+	const [scoutBusy, setScoutBusy] = (0, import_react.useState)(false);
 	const chatHist = (0, import_react.useRef)([]);
 	const directingRef = (0, import_react.useRef)(false);
 	(0, import_react.useEffect)(() => {
@@ -1759,6 +2278,7 @@ function HiveApp() {
 	}, [directing]);
 	(0, import_react.useEffect)(() => {
 		setLlama(loadLlamaConfig());
+		setNetPath(loadNetPath());
 	}, []);
 	const patch = (0, import_react.useCallback)((p) => {
 		setConfig((c) => {
@@ -1789,23 +2309,27 @@ function HiveApp() {
 		const eng = engineRef.current;
 		let lastW = 0;
 		let lastH = 0;
+		let lastDpr = 0;
 		let ctx = null;
-		const ro = new ResizeObserver(() => {
+		const size = () => {
 			const rect = wrap.getBoundingClientRect();
 			const dpr = Math.min(window.devicePixelRatio || 1, 2);
 			const w = Math.max(320, Math.floor(rect.width));
 			const h = Math.max(280, Math.floor(rect.height));
-			if (w === lastW && h === lastH) return;
+			if (w === lastW && h === lastH && dpr === lastDpr) return;
 			lastW = w;
 			lastH = h;
+			lastDpr = dpr;
 			canvas.width = Math.floor(w * dpr);
 			canvas.height = Math.floor(h * dpr);
 			ctx = canvas.getContext("2d");
 			if (!ctx) return;
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 			eng.resize(w, h);
-		});
+		};
+		const ro = new ResizeObserver(() => size());
 		ro.observe(wrap);
+		size();
 		let raf = 0;
 		let last = performance.now();
 		let acc = 0;
@@ -1842,6 +2366,8 @@ function HiveApp() {
 					coh: [...h.coh, m.coherence * 100].slice(-48),
 					energy: [...h.energy, m.avgEnergy].slice(-48)
 				}));
+				setWork([...eng.work]);
+				setLeads(eng.leads());
 			}
 			raf = requestAnimationFrame(loop);
 		};
@@ -1864,7 +2390,7 @@ function HiveApp() {
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, [reset]);
-	const onCanvasClick = (e) => {
+	const onFieldClick = (e) => {
 		const canvas = canvasRef.current;
 		const eng = engineRef.current;
 		if (!canvas) return;
@@ -1893,6 +2419,12 @@ function HiveApp() {
 		engineRef.current.reset(next);
 		setEvents([...engineRef.current.events]);
 	};
+	const recordNet = (traces) => {
+		if (!traces.length) return;
+		setNetLog((n) => [...traces, ...n].slice(0, 24));
+		traces.forEach((t) => engineRef.current.log("browse", `${t.agent} · ${t.tool} · ${t.detail}`, t.ok ? "ok" : "warn"));
+		setEvents([...engineRef.current.events]);
+	};
 	const selectedAgent = engineRef.current.agents.find((a) => a.id === selected) ?? null;
 	const sendChat = async () => {
 		const text = chatInput.trim();
@@ -1903,8 +2435,15 @@ function HiveApp() {
 			content: text
 		}]);
 		setChatBusy(true);
+		engineRef.current.agents.forEach((a) => {
+			if (a.role === "explorer" || a.role === "scout") a.state = "thinking";
+		});
 		const res = await chatSwarm(llama, chatHist.current, text, engineRef.current.metrics(), cfgRef.current);
+		engineRef.current.agents.forEach((a) => {
+			if (a.state === "thinking" && (a.role === "explorer" || a.role === "scout")) a.state = "moving";
+		});
 		setChatBusy(false);
+		if (res.traces?.length) recordNet(res.traces);
 		if (!res.ok) {
 			setChat((c) => [...c, {
 				role: "assistant",
@@ -1929,7 +2468,7 @@ function HiveApp() {
 			content: res.text
 		}]);
 		setTokens((t) => t + res.tokens);
-		setQwenOn(true);
+		setQwenOn(res.tokens > 0);
 	};
 	const directorOnce = (0, import_react.useCallback)(async () => {
 		if (!await probeLlama(llama.endpoint)) {
@@ -2000,13 +2539,20 @@ function HiveApp() {
 			});
 			if (!res.ok) {
 				engineRef.current.log("ai", res.error, "critical");
+				if (res.traces?.length) recordNet(res.traces);
 				setQwenOn(false);
 				break;
 			}
-			setQwenOn(true);
+			setQwenOn(res.tokens > 0);
 			setTokens((t) => t + res.tokens);
+			if (res.traces.length) recordNet(res.traces);
 			prior += `\nR${r}: ${res.brief}`;
 			res.notes.forEach((n) => engineRef.current.remember(n));
+			for (const job of res.assignments) {
+				const role = job.role;
+				if (ROLES.includes(role) && job.task) engineRef.current.assignWork(role, job.task);
+			}
+			setWork([...engineRef.current.work]);
 			setArtifacts((a) => [...a, ...res.artifacts.map((art, i) => ({
 				id: `${r}-${i}-${art.title}`,
 				title: art.title,
@@ -2014,11 +2560,42 @@ function HiveApp() {
 				by: art.by
 			}))]);
 			engineRef.current.log("ai", res.brief, "ok");
+			toast.message(`Round ${r}/3`, { description: res.brief.slice(0, 140) });
 		}
 		engineRef.current.agents.forEach((a) => {
 			if (a.state === "thinking") a.state = "moving";
 		});
 		setMissionBusy(false);
+	};
+	const dispatchScout = async () => {
+		const q = scoutQ.trim();
+		if (!q || scoutBusy) return;
+		setScoutBusy(true);
+		engineRef.current.agents.forEach((a) => {
+			if (a.role === "explorer" || a.role === "scout") a.state = "thinking";
+		});
+		const dossier = await swarmScout(q, {
+			force: true,
+			follow: true
+		});
+		engineRef.current.agents.forEach((a) => {
+			if (a.state === "thinking" && (a.role === "explorer" || a.role === "scout")) a.state = "moving";
+		});
+		recordNet(dossier.traces);
+		engineRef.current.assignWork("explorer", `Scout: ${q.slice(0, 80)}`);
+		if (dossier.brief) {
+			engineRef.current.remember(`Scout dossier: ${q}`);
+			setArtifacts((a) => [{
+				id: `scout-${Date.now()}`,
+				title: `Dossier · ${q.slice(0, 48)}`,
+				body: dossier.brief,
+				by: "Kepler"
+			}, ...a]);
+		}
+		engineRef.current.log("browse", dossier.brief ? "Kepler/Vesper returned a dossier." : "Kepler/Vesper found nothing.", dossier.brief ? "ok" : "warn");
+		setEvents([...engineRef.current.events]);
+		toast.message(dossier.brief ? "Dossier in hive" : "Scout empty", { description: q.slice(0, 80) });
+		setScoutBusy(false);
 	};
 	const saveState = () => {
 		const name = `hive-${(/* @__PURE__ */ new Date()).toISOString().slice(11, 19)}`;
@@ -2041,6 +2618,11 @@ function HiveApp() {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "flex h-dvh min-h-0 flex-col bg-bg text-fg",
 		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toaster, {
+				theme: "dark",
+				position: "bottom-right",
+				richColors: false
+			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 				className: "flex h-14 shrink-0 items-center gap-3 border-b border-border px-4",
 				children: [
@@ -2054,17 +2636,29 @@ function HiveApp() {
 							className: "text-sm font-medium tracking-tight",
 							children: "Hivefield"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "hidden text-xs text-muted sm:block",
+							className: "text-xs text-muted",
 							children: [
 								"Operations · ",
 								QWEN_LABEL,
-								" is the brain"
+								" air-gapped · swarm holds the net"
 							]
 						})]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "ml-auto flex items-center gap-2",
+						className: "ml-auto flex min-w-0 items-center gap-2",
 						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "mr-2 hidden min-w-0 items-center gap-1 lg:flex",
+								children: leads.map((a) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									onClick: () => setSelected(a.id),
+									className: cn("flex h-8 items-center gap-1.5 rounded-md px-2 text-xs", selected === a.id ? "bg-raised text-fg" : "text-muted hover:text-fg"),
+									title: `${a.name} · ${a.state}`,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "size-1.5 rounded-full",
+										style: { background: ROLE_COLOR[a.role] }
+									}), a.name]
+								}, a.id))
+							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, {
 								on: qwenOn,
 								label: qwenOn ? QWEN_LABEL : "Qwen offline"
@@ -2087,23 +2681,11 @@ function HiveApp() {
 					})
 				]
 			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("nav", {
-				className: "flex shrink-0 gap-1 border-b border-border px-2 py-1 md:hidden",
-				children: [
-					["field", "Field"],
-					["controls", "Controls"],
-					["intel", "Qwen"]
-				].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					className: cn("h-11 flex-1 rounded-md text-sm", mobilePane === id ? "bg-raised text-fg" : "text-muted"),
-					onClick: () => setMobilePane(id),
-					children: label
-				}, id))
-			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "grid min-h-0 flex-1 md:grid-cols-[260px_minmax(0,1fr)_320px]",
+				className: "grid min-h-0 flex-1 grid-cols-1 min-[1100px]:grid-cols-[240px_minmax(0,1fr)_300px]",
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", {
-						className: cn("min-h-0 overflow-y-auto border-border p-3 md:block md:border-r", mobilePane === "controls" ? "block" : "hidden"),
+						className: "min-h-0 overflow-y-auto border-r border-border p-3",
 						children: [
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, {
 								title: "Behavior",
@@ -2317,14 +2899,14 @@ function HiveApp() {
 						]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
-						className: cn("relative min-h-0 min-w-0", mobilePane === "field" ? "block" : "hidden md:block"),
+						className: "relative min-h-[420px] min-w-0",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							ref: wrapRef,
-							className: "absolute inset-0 touch-none",
+							className: "absolute inset-0",
 							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("canvas", {
 								ref: canvasRef,
 								className: "block size-full",
-								onClick: onCanvasClick,
+								onClick: onFieldClick,
 								role: "img",
 								"aria-label": "Live swarm field"
 							})
@@ -2352,6 +2934,10 @@ function HiveApp() {
 									value: `${metrics.generation}`
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									label: "Jobs",
+									value: `${metrics.workActive}/${metrics.workDone}`
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
 									label: "Res",
 									value: `${metrics.resourcesFound}/${metrics.resourcesTotal}`
 								}),
@@ -2363,7 +2949,7 @@ function HiveApp() {
 						})]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", {
-						className: cn("min-h-0 overflow-y-auto border-border p-3 md:block md:border-l", mobilePane === "intel" ? "block" : "hidden"),
+						className: "min-h-0 overflow-y-auto border-l border-border p-3",
 						children: [
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 								className: "mb-3 flex gap-1 rounded-lg bg-surface p-1",
@@ -2386,17 +2972,13 @@ function HiveApp() {
 										children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 											className: "space-y-2",
 											children: [
-												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 													className: "text-xs leading-relaxed text-muted",
-													children: [
-														"Qwen is the swarm's brain. The field is only the bodies. Point this at your llama.cpp OpenAI server — model stays locked to ",
-														"unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
-														"."
-													]
+													children: "Qwen is air-gapped — no search, no fetch. Kepler (explorer) and Vesper (scout) hold the only internet. They gather a dossier; Qwen reasons on that."
 												}),
 												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 													className: "text-xs text-muted",
-													children: "Endpoint"
+													children: "Brain endpoint"
 												}),
 												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 													className: "h-10 w-full rounded-md bg-raised px-3 font-mono text-xs text-fg outline-none ring-1 ring-border focus:ring-ring",
@@ -2426,12 +3008,75 @@ function HiveApp() {
 														children: "Save"
 													})]
 												}),
-												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 													className: "text-xs text-subtle",
-													children: "Same contract as your project: POST /v1/chat/completions. Default here is :8088 so it does not collide with this console. Your llama.cpp can stay on :8080 — just set the endpoint."
+													children: [
+														"Same contract as your project: POST /v1/chat/completions. Point this at your llama.cpp OpenAI server. Model stays locked to ",
+														"unsloth/Qwen3.6-27B-GGUF:Q6_K_XL",
+														". Scout still works if the brain is offline."
+													]
 												})
 											]
 										})
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, {
+										title: "Live net · Kepler & Vesper",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												className: "mb-2 text-xs leading-relaxed text-muted",
+												children: "Only the swarm's explorer and scout fetch. Qwen is air-gapped. Dispatch Kepler/Vesper even when the brain is offline."
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+												className: "mb-2 flex gap-1 rounded-lg bg-surface p-1",
+												children: [["device", "This computer"], ["relay", "Relay"]].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													className: cn("h-9 flex-1 rounded-md text-sm", netPath === id ? "bg-raised text-fg" : "text-muted"),
+													onClick: () => {
+														setNetPath(id);
+														saveNetPath(id);
+													},
+													children: label
+												}, id))
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												className: "mb-2 text-xs text-subtle",
+												children: netPath === "device" ? "Kepler/Vesper fetch from this computer. Falls back to relay if a site blocks the browser." : "Kepler/Vesper fetch through Hivefield's relay."
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "mb-2 flex gap-2",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													className: "h-10 min-w-0 flex-1 rounded-md bg-raised px-3 text-sm outline-none ring-1 ring-border focus:ring-ring",
+													value: scoutQ,
+													onChange: (e) => setScoutQ(e.target.value),
+													onKeyDown: (e) => e.key === "Enter" && void dispatchScout(),
+													placeholder: "Query or URL",
+													disabled: scoutBusy
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+													size: "sm",
+													onClick: () => void dispatchScout(),
+													disabled: scoutBusy || !scoutQ.trim(),
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Globe, {}), scoutBusy ? "Fetching" : "Scout"]
+												})]
+											}),
+											netLog.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												className: "text-xs text-subtle",
+												children: "No fetches yet — scout, deploy a research mission, or ask in chat."
+											}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
+												className: "space-y-1",
+												children: netLog.slice(0, 8).map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
+													className: "flex gap-2 font-mono text-xs",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Globe, { className: cn("mt-0.5 size-3.5 shrink-0", t.ok ? "text-signal" : "text-danger") }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+														className: "min-w-0 break-all text-muted",
+														children: [
+															t.agent,
+															" · ",
+															t.tool,
+															" · ",
+															t.detail
+														]
+													})]
+												}, `${t.agent}-${t.tool}-${i}`))
+											})
+										]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, {
 										title: "Director",
@@ -2500,6 +3145,21 @@ function HiveApp() {
 													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", {
 														className: "mt-1 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted",
 														children: a.body
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+														variant: "ghost",
+														size: "sm",
+														className: "mt-2",
+														onClick: () => {
+															const blob = new Blob([`# ${a.title}\n\n_by ${a.by}_\n\n${a.body}\n`], { type: "text/markdown" });
+															const url = URL.createObjectURL(blob);
+															const link = document.createElement("a");
+															link.href = url;
+															link.download = `${a.title.replace(/[^\w.-]+/g, "-").slice(0, 48)}.md`;
+															link.click();
+															URL.revokeObjectURL(url);
+														},
+														children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, {}), "Export"]
 													})
 												]
 											}, a.id))
@@ -2521,7 +3181,7 @@ function HiveApp() {
 													}, i)),
 													chatBusy && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 														className: "text-xs text-muted",
-														children: "Qwen is thinking…"
+														children: "Kepler/Vesper fetching · Qwen reasons locally…"
 													})
 												]
 											}),
@@ -2532,7 +3192,7 @@ function HiveApp() {
 													value: chatInput,
 													onChange: (e) => setChatInput(e.target.value),
 													onKeyDown: (e) => e.key === "Enter" && void sendChat(),
-													placeholder: "Ask the swarm…"
+													placeholder: "Ask the swarm — Kepler/Vesper fetch, Qwen stays local…"
 												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
 													size: "icon",
 													"aria-label": "Send",
@@ -2586,6 +3246,14 @@ function HiveApp() {
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stat, {
 												k: "Hive notes",
 												v: metrics.hiveSize
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stat, {
+												k: "Jobs",
+												v: `${metrics.workActive} live`
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stat, {
+												k: "Closed",
+												v: metrics.workDone
 											}),
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Stat, {
 												k: "Q explore",
@@ -2642,20 +3310,81 @@ function HiveApp() {
 								]
 							}),
 							tab === "hive" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "space-y-2",
+								className: "space-y-4",
 								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-										className: "text-xs text-muted",
-										children: "Shared memory the swarm has written."
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, {
+										title: "Roster",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
+											className: "space-y-1",
+											children: leads.map((a) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+												className: "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-raised",
+												onClick: () => setSelected(a.id),
+												children: [
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+														className: "size-2 rounded-full",
+														style: { background: ROLE_COLOR[a.role] }
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+														className: "font-medium",
+														children: a.name
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+														className: "text-subtle",
+														children: ROLE_TITLE[a.role]
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+														className: "ml-auto capitalize text-muted",
+														children: a.state
+													})
+												]
+											}) }, a.id))
+										})
 									}),
-									engineRef.current.hive.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-										className: "text-xs text-subtle",
-										children: "Empty — discoveries land here."
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, {
+										title: "Work queue",
+										children: [work.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+											className: "text-xs text-subtle",
+											children: "No jobs — deploy a mission or start the director."
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
+											className: "space-y-2",
+											children: work.slice(0, 12).map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
+												className: "rounded-md bg-raised p-3",
+												children: [
+													/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+														className: "flex items-center justify-between gap-2 text-xs",
+														children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+															className: "font-medium",
+															children: w.agentName
+														}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+															className: "capitalize text-muted",
+															children: w.status
+														})]
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+														className: "mt-1 text-xs text-muted",
+														children: w.title
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+														className: "mt-2 h-1 rounded-full bg-surface",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+															className: "h-full rounded-full bg-signal",
+															style: { width: `${Math.round(w.progress * 100)}%` }
+														})
+													})
+												]
+											}, w.id))
+										})]
 									}),
-									engineRef.current.hive.map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-										className: "rounded-md bg-raised px-3 py-2 text-xs text-fg",
-										children: n.text
-									}, n.id)),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, {
+										title: "Hive memory",
+										children: [engineRef.current.hive.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+											className: "text-xs text-subtle",
+											children: "Empty — discoveries land here."
+										}), engineRef.current.hive.map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "rounded-md bg-raised px-3 py-2 text-xs text-fg",
+											children: n.text
+										}, n.id))]
+									}),
 									saved.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, {
 										title: "Saved configs",
 										children: saved.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -2686,9 +3415,9 @@ function HiveApp() {
 		]
 	});
 }
-function Section({ title, children }) {
+function Section({ title, children, className }) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-		className: "mb-5",
+		className: cn("mb-1", className),
 		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
 			className: "mb-2 text-xs font-medium uppercase tracking-wider text-subtle",
 			children: title
@@ -2794,8 +3523,9 @@ function clock(t) {
 	const m = Math.floor(t % 1 * 60);
 	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
+var routes_exports = /* @__PURE__ */ __exportAll({ component: () => Home });
 function Home() {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HiveApp, {});
 }
 //#endregion
-export { Home as component };
+export { createSsrRpc as n, routes_exports as t };

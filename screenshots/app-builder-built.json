@@ -7,9 +7,9 @@
       "status": 200,
       "title": "Hivefield",
       "hasCanvas": true,
-      "bodyTextLen": 1981,
-      "bodyTextHash": "1f00fe73e693365f7c09f3a454fa98cd0415e14a21fc0d3dd2b221627e6ecb17",
-      "bodyTextPrefix": "Hivefield Operations · Qwen 3.6 27B is the brain Qwen offline BE",
+      "bodyTextLen": 2477,
+      "bodyTextHash": "fd15b033282bd8e7777f0f26b2c75655c26a9ce0d4897c8bc840ffda778234db",
+      "bodyTextPrefix": "Hivefield Operations · Qwen 3.6 27B air-gapped · swarm holds the",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -21,9 +21,9 @@
       "status": 200,
       "title": "Hivefield",
       "hasCanvas": true,
-      "bodyTextLen": 86,
-      "bodyTextHash": "8c56610e2b17d03811a90837d292e0e3b272c7f31784940efea08b4282dec54b",
-      "bodyTextPrefix": "Hivefield Field Controls Qwen SPEED 3.6 COHERENCE 68% ENERGY 84 ",
+      "bodyTextLen": 2464,
+      "bodyTextHash": "fb1ee8f005e11f87a90349495d62baa1e8c630c74d249eb606dbe0c69af35d0e",
+      "bodyTextPrefix": "Hivefield Operations · Qwen 3.6 27B air-gapped · swarm holds the",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -36,8 +36,6 @@
   ],
   "authWarnings": [],
   "verdictFile": "/workspace/screenshots/app-builder-built.json",
-  "divergesFromBaseline": true,
-  "baselineReasons": [
-    "desktop: body text changed (0 -> 1981 chars, hash mismatch)"
-  ]
+  "divergesFromBaseline": false,
+  "baselineReasons": []
 }

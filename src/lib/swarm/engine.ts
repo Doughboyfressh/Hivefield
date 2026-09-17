@@ -14,6 +14,7 @@ import {
   type SwarmConfig,
   type Threat,
   type Vec,
+  type WorkItem,
   type WorldClock,
 } from "./types";
 import { add, dist, limit, mag, mul, norm, randDir, sub, vec } from "./vec";
@@ -51,6 +52,8 @@ export class SwarmEngine {
   structures: Structure[] = [];
   events: HiveEvent[] = [];
   hive: HiveNote[] = [];
+  work: WorkItem[] = [];
+  traffic: { id: string; from: string; to: string; text: string; at: number }[] = [];
   clusters: Cluster[] = [];
   pheromone: PheromoneGrid = createGrid(960, 640);
   world: WorldClock = {
@@ -72,6 +75,7 @@ export class SwarmEngine {
   private qExplore = 0.3;
   private lastEvolve = 0;
   private lastCluster = 0;
+  private lastWork = 0;
 
   resize(w: number, h: number) {
     const nw = Math.max(360, w);
@@ -90,6 +94,8 @@ export class SwarmEngine {
     this.structures = [];
     this.events = [];
     this.hive = [];
+    this.work = [];
+    this.traffic = [];
     this.clusters = [];
     this.messages = 0;
     this.tick = 0;
@@ -284,6 +290,9 @@ export class SwarmEngine {
       case "spawn_resource":
         this.seedResources(3);
         return "Seeded 3 resources";
+      case "assign_work":
+        if (action.behavior) return this.assignWork("worker", action.behavior);
+        return "No assignment";
       default:
         return `Ignored ${action.type}`;
     }
@@ -368,6 +377,11 @@ export class SwarmEngine {
     if (this.time - this.lastCluster > 2.5) {
       this.recluster();
       this.lastCluster = this.time;
+    }
+
+    if (this.time - this.lastWork > 1.6) {
+      this.progressWork();
+      this.lastWork = this.time;
     }
 
     if (cfg.lifecycleEnabled) this.lifecycle();
@@ -526,6 +540,8 @@ export class SwarmEngine {
     } else if (agent.trail.length) agent.trail.shift();
 
     this.forage(agent, perc);
+
+    if (agent.taskId) agent.state = agent.state === "communicating" ? "communicating" : "working";
 
     if (agent.connections.length && Math.random() < 0.01) {
       agent.state = "communicating";
@@ -812,6 +828,66 @@ export class SwarmEngine {
     this.clusters = clusters;
   }
 
+  leads(): Agent[] {
+    const names = ["Meridian", "Kepler", "Anvil", "Vesper", "Helix"];
+    const out: Agent[] = [];
+    for (const n of names) {
+      const a = this.agents.find((x) => x.name === n || x.name.startsWith(`${n}-`));
+      if (a) out.push(a);
+    }
+    return out;
+  }
+
+  assignWork(role: Role, title: string): string {
+    const busy = new Set(this.work.filter((w) => w.status === "active").map((w) => w.agentId));
+    const agent = this.agents.find((a) => a.role === role && !busy.has(a.id)) ?? this.agents.find((a) => a.role === role);
+    const item: WorkItem = {
+      id: this.nid("job"),
+      title: title.slice(0, 160),
+      role,
+      agentId: agent?.id,
+      agentName: agent?.name ?? role,
+      status: "active",
+      progress: 0,
+      at: Date.now(),
+    };
+    this.work.unshift(item);
+    if (this.work.length > 40) this.work.length = 40;
+    if (agent) {
+      agent.taskId = item.id;
+      agent.state = "working";
+    }
+    this.speak("Meridian", item.agentName, title);
+    this.log("ai", `${item.agentName} assigned: ${title}`, "ok");
+    return `${item.agentName} ← ${title}`;
+  }
+
+  speak(from: string, to: string, text: string) {
+    this.traffic.unshift({ id: this.nid("msg"), from, to, text: text.slice(0, 220), at: Date.now() });
+    if (this.traffic.length > 32) this.traffic.length = 32;
+    this.messages += 1;
+    const a = this.agents.find((x) => x.name === from);
+    if (a) a.state = "communicating";
+  }
+
+  private progressWork() {
+    for (const w of this.work) {
+      if (w.status !== "active") continue;
+      w.progress = Math.min(1, w.progress + 0.18);
+      if (w.progress >= 1) {
+        w.status = "done";
+        const a = this.agents.find((x) => x.id === w.agentId);
+        if (a && a.taskId === w.id) {
+          a.taskId = undefined;
+          a.state = "moving";
+          a.fitness += 8;
+        }
+        this.log("ai", `${w.agentName} closed: ${w.title}`, "ok");
+        this.remember(`${w.agentName}: ${w.title}`);
+      }
+    }
+  }
+
   metrics(): Metrics {
     const n = this.agents.length || 1;
     const avgSpeed = this.agents.reduce((s, a) => s + mag(a.velocity), 0) / n;
@@ -848,6 +924,8 @@ export class SwarmEngine {
       hiveSize: this.hive.length,
       eventRate,
       coverage,
+      workActive: this.work.filter((w) => w.status === "active").length,
+      workDone: this.work.filter((w) => w.status === "done").length,
     };
   }
 

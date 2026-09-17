@@ -5,6 +5,7 @@ import {
   Activity,
   Brain,
   Globe,
+  Download,
   Hexagon,
   Pause,
   Play,
@@ -15,18 +16,24 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Toaster, toast } from "sonner";
 import { SwarmEngine } from "@/lib/swarm/engine";
 import { renderSwarm } from "@/lib/swarm/render";
 import { SCENARIOS } from "@/lib/swarm/scenarios";
 import {
   BEHAVIORS,
   DEFAULT_CONFIG,
+  ROLE_COLOR,
   ROLE_DUTY,
   ROLE_TITLE,
+  ROLES,
   SAMPLE_MISSIONS,
+  type Agent,
   type HiveEvent,
   type Metrics,
+  type Role,
   type SwarmConfig,
+  type WorkItem,
 } from "@/lib/swarm/types";
 import {
   DEFAULT_LLAMA_ENDPOINT,
@@ -88,6 +95,8 @@ export function HiveApp() {
   const [round, setRound] = useState(0);
   const [artifacts, setArtifacts] = useState<{ id: string; title: string; body: string; by: string }[]>([]);
   const [netLog, setNetLog] = useState<BrowseTrace[]>([]);
+  const [work, setWork] = useState<WorkItem[]>([]);
+  const [leads, setLeads] = useState<Agent[]>([]);
   const [netPath, setNetPath] = useState<NetPath>("device");
   const [scoutQ, setScoutQ] = useState("");
   const [scoutBusy, setScoutBusy] = useState(false);
@@ -196,6 +205,8 @@ export function HiveApp() {
           coh: [...h.coh, m.coherence * 100].slice(-48),
           energy: [...h.energy, m.avgEnergy].slice(-48),
         }));
+        setWork([...eng.work]);
+        setLeads(eng.leads());
       }
       raf = requestAnimationFrame(loop);
     };
@@ -364,6 +375,11 @@ export function HiveApp() {
       if (res.traces.length) recordNet(res.traces);
       prior += `\nR${r}: ${res.brief}`;
       res.notes.forEach((n) => engineRef.current.remember(n));
+      for (const job of res.assignments) {
+        const role = job.role as Role;
+        if ((ROLES as string[]).includes(role) && job.task) engineRef.current.assignWork(role, job.task);
+      }
+      setWork([...engineRef.current.work]);
       setArtifacts((a) => [
         ...a,
         ...res.artifacts.map((art, i) => ({
@@ -374,6 +390,7 @@ export function HiveApp() {
         })),
       ]);
       engineRef.current.log("ai", res.brief, "ok");
+      toast.message(`Round ${r}/3`, { description: res.brief.slice(0, 140) });
     }
     engineRef.current.agents.forEach((a) => {
       if (a.state === "thinking") a.state = "moving";
@@ -393,6 +410,7 @@ export function HiveApp() {
       if (a.state === "thinking" && (a.role === "explorer" || a.role === "scout")) a.state = "moving";
     });
     recordNet(dossier.traces);
+    engineRef.current.assignWork("explorer", `Scout: ${q.slice(0, 80)}`);
     if (dossier.brief) {
       engineRef.current.remember(`Scout dossier: ${q}`);
       setArtifacts((a) => [
@@ -402,6 +420,7 @@ export function HiveApp() {
     }
     engineRef.current.log("browse", dossier.brief ? "Kepler/Vesper returned a dossier." : "Kepler/Vesper found nothing.", dossier.brief ? "ok" : "warn");
     setEvents([...engineRef.current.events]);
+    toast.message(dossier.brief ? "Dossier in hive" : "Scout empty", { description: q.slice(0, 80) });
     setScoutBusy(false);
   };
 
@@ -424,13 +443,30 @@ export function HiveApp() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-bg text-fg">
+      <Toaster theme="dark" position="bottom-right" richColors={false} />
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
         <Hexagon className="size-5 text-signal" strokeWidth={1.75} />
         <div className="min-w-0">
           <div className="text-sm font-medium tracking-tight">Hivefield</div>
           <div className="text-xs text-muted">Operations · {QWEN_LABEL} air-gapped · swarm holds the net</div>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div className="mr-2 hidden min-w-0 items-center gap-1 lg:flex">
+            {leads.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setSelected(a.id)}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-md px-2 text-xs",
+                  selected === a.id ? "bg-raised text-fg" : "text-muted hover:text-fg",
+                )}
+                title={`${a.name} · ${a.state}`}
+              >
+                <span className="size-1.5 rounded-full" style={{ background: ROLE_COLOR[a.role] }} />
+                {a.name}
+              </button>
+            ))}
+          </div>
           <StatusDot on={qwenOn} label={qwenOn ? QWEN_LABEL : "Qwen offline"} />
           <Button variant="ghost" size="icon" aria-label={paused ? "Resume" : "Pause"} onClick={() => setPaused((p) => !p)}>
             {paused ? <Play className="ml-0.5" /> : <Pause />}
@@ -441,7 +477,7 @@ export function HiveApp() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_320px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 min-[1100px]:grid-cols-[240px_minmax(0,1fr)_300px]">
         <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
           <Section title="Behavior">
             <div className="grid grid-cols-1 gap-1">
@@ -527,7 +563,7 @@ export function HiveApp() {
           </Section>
         </aside>
 
-        <main className="relative min-h-0 min-w-0">
+        <main className="relative min-h-[420px] min-w-0">
           <div ref={wrapRef} className="absolute inset-0">
             <canvas
               ref={canvasRef}
@@ -543,6 +579,7 @@ export function HiveApp() {
             <Chip label="Energy" value={`${Math.round(metrics.avgEnergy)}`} />
             <Chip label="Links" value={`${metrics.connections}`} />
             <Chip label="Gen" value={`${metrics.generation}`} />
+            <Chip label="Jobs" value={`${metrics.workActive}/${metrics.workDone}`} />
             <Chip label="Res" value={`${metrics.resourcesFound}/${metrics.resourcesTotal}`} />
             {config.environmentEnabled && (
               <Chip
@@ -726,6 +763,23 @@ export function HiveApp() {
                     <div className="text-xs text-muted">{a.by}</div>
                     <h3 className="text-sm font-medium">{a.title}</h3>
                     <pre className="mt-1 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">{a.body}</pre>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => {
+                        const blob = new Blob([`# ${a.title}\n\n_by ${a.by}_\n\n${a.body}\n`], { type: "text/markdown" });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = `${a.title.replace(/[^\w.-]+/g, "-").slice(0, 48)}.md`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      <Download />
+                      Export
+                    </Button>
                   </article>
                 ))}
               </Section>
@@ -774,6 +828,8 @@ export function HiveApp() {
                 <Stat k="Structures" v={metrics.structures} />
                 <Stat k="Threats" v={metrics.threats} />
                 <Stat k="Hive notes" v={metrics.hiveSize} />
+                <Stat k="Jobs" v={`${metrics.workActive} live`} />
+                <Stat k="Closed" v={metrics.workDone} />
                 <Stat k="Q explore" v={metrics.qExplore.toFixed(2)} />
               </div>
               {selectedAgent && (
@@ -801,14 +857,49 @@ export function HiveApp() {
           )}
 
           {tab === "hive" && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted">Shared memory the swarm has written.</p>
-              {engineRef.current.hive.length === 0 && <p className="text-xs text-subtle">Empty — discoveries land here.</p>}
-              {engineRef.current.hive.map((n) => (
-                <div key={n.id} className="rounded-md bg-raised px-3 py-2 text-xs text-fg">
-                  {n.text}
-                </div>
-              ))}
+            <div className="space-y-4">
+              <Section title="Roster">
+                <ul className="space-y-1">
+                  {leads.map((a) => (
+                    <li key={a.id}>
+                      <button
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-raised"
+                        onClick={() => setSelected(a.id)}
+                      >
+                        <span className="size-2 rounded-full" style={{ background: ROLE_COLOR[a.role] }} />
+                        <span className="font-medium">{a.name}</span>
+                        <span className="text-subtle">{ROLE_TITLE[a.role]}</span>
+                        <span className="ml-auto capitalize text-muted">{a.state}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+              <Section title="Work queue">
+                {work.length === 0 && <p className="text-xs text-subtle">No jobs — deploy a mission or start the director.</p>}
+                <ul className="space-y-2">
+                  {work.slice(0, 12).map((w) => (
+                    <li key={w.id} className="rounded-md bg-raised p-3">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-medium">{w.agentName}</span>
+                        <span className="capitalize text-muted">{w.status}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">{w.title}</p>
+                      <div className="mt-2 h-1 rounded-full bg-surface">
+                        <div className="h-full rounded-full bg-signal" style={{ width: `${Math.round(w.progress * 100)}%` }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+              <Section title="Hive memory">
+                {engineRef.current.hive.length === 0 && <p className="text-xs text-subtle">Empty — discoveries land here.</p>}
+                {engineRef.current.hive.map((n) => (
+                  <div key={n.id} className="rounded-md bg-raised px-3 py-2 text-xs text-fg">
+                    {n.text}
+                  </div>
+                ))}
+              </Section>
               {saved.length > 0 && (
                 <Section title="Saved configs">
                   {saved.map((s) => (
